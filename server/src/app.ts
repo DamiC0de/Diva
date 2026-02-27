@@ -7,6 +7,7 @@ import authPlugin from './plugins/auth.js';
 import monitoringPlugin from './plugins/monitoring.js';
 import { billingRoutes } from './routes/billing.js';
 import { healthRoutes } from './routes/health.js';
+import { memoriesRoutes } from './routes/memories.js';
 import { pingRoutes } from './routes/ping.js';
 import { settingsRoutes } from './routes/settings.js';
 import { userRoutes } from './routes/user.js';
@@ -39,6 +40,7 @@ export async function buildApp() {
   await app.register(healthRoutes);
   await app.register(pingRoutes);
   await app.register(billingRoutes);
+  await app.register(memoriesRoutes);
   await app.register(settingsRoutes);
   await app.register(userRoutes);
   await app.register(wsRoutes);
