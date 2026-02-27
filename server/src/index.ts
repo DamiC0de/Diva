@@ -1,5 +1,6 @@
 import { buildApp } from './app.js';
 import { NotificationScheduler } from './services/notificationScheduler.js';
+import { closeRedis } from './lib/redis.js';
 
 async function start() {
   const app = await buildApp();
@@ -18,6 +19,7 @@ async function start() {
     // Graceful shutdown
     const shutdown = async () => {
       scheduler.stop();
+      await closeRedis();
       await app.close();
       process.exit(0);
     };

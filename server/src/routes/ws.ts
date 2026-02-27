@@ -1,35 +1,51 @@
+/**
+ * WebSocket route — wired to Orchestrator + Redis
+ */
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
+import { Orchestrator } from '../services/orchestrator.js';
+import { getRedis } from '../lib/redis.js';
+
+let orchestrator: Orchestrator | null = null;
 
 export async function wsRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/ws', { websocket: true }, (socket: WebSocket, _request) => {
-    app.log.info('WebSocket client connected');
+  // Initialize orchestrator with Redis
+  const redis = getRedis();
+  try {
+    await redis.connect();
+    orchestrator = new Orchestrator(app.log, redis as never);
+    app.log.info('Orchestrator initialized with Redis');
+  } catch {
+    app.log.warn('Redis not available — orchestrator running in mock mode');
+    orchestrator = new Orchestrator(app.log, null);
+  }
 
-    socket.on('message', (message: Buffer) => {
-      const data = message.toString();
-      app.log.debug({ msg: 'WS message received', data });
+  app.get('/ws', { websocket: true }, (socket: WebSocket, request) => {
+    // Extract userId from auth token (query param or header)
+    const url = new URL(request.url, `http://${request.headers.host}`);
+    const token = url.searchParams.get('token');
 
-      // Echo for now — will be replaced by orchestrator in EL-009
-      socket.send(JSON.stringify({
-        type: 'echo',
-        data,
-        timestamp: new Date().toISOString(),
-      }));
-    });
+    if (!token) {
+      socket.send(JSON.stringify({ type: 'error', message: 'Authentication required' }));
+      socket.close(4001, 'Unauthorized');
+      return;
+    }
 
-    socket.on('close', () => {
-      app.log.info('WebSocket client disconnected');
-    });
+    // TODO: Verify JWT and extract userId
+    // For now, accept token as userId for development
+    const userId = token;
 
-    socket.on('error', (error: Error) => {
-      app.log.error({ msg: 'WebSocket error', error: error.message });
-    });
+    app.log.info({ msg: 'WebSocket client connected', userId });
 
-    // Send welcome message
+    // Delegate to orchestrator
+    orchestrator!.handleConnection(socket, userId);
+
+    // Send welcome
     socket.send(JSON.stringify({
       type: 'connected',
-      message: 'Bienvenue sur Elio API Gateway',
+      message: 'Bienvenue sur Elio',
       version: '0.1.0',
+      userId,
     }));
   });
 }

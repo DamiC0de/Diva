@@ -219,7 +219,7 @@ Tu peux :
     const systemBlocks = this.buildSystemPrompt(userSettings, memories);
 
     try {
-      const response = await this.client.messages.create({
+      const response = await this.client!.messages.create({
         model: this.config.model,
         max_tokens: this.config.maxTokens,
         temperature: this.config.temperature,
@@ -290,7 +290,7 @@ Tu peux :
 
     const systemBlocks = this.buildSystemPrompt(userSettings, memories);
 
-    const stream = this.client.messages.stream({
+    const stream = this.client!.messages.stream({
       model: this.config.model,
       max_tokens: this.config.maxTokens,
       temperature: this.config.temperature,

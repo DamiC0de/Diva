@@ -3,6 +3,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { getSupabase } from '../lib/supabase.js';
+import { getDailyUsage } from '../lib/redis.js';
 
 interface RevenueCatWebhookBody {
   event: {
@@ -85,8 +86,12 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const limits: Record<string, number> = { free: 10, pro: 500, annual: 500, care: 500 };
     const dailyLimit = limits[tier] ?? 10;
 
-    // TODO: Track daily usage in Redis (INCR elio:usage:{userId}:{date}, EXPIRE 86400)
-    const used = 0;
+    let used = 0;
+    try {
+      used = await getDailyUsage(request.userId as string);
+    } catch {
+      // Redis unavailable — return 0
+    }
 
     return {
       tier,

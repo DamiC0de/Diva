@@ -40,7 +40,7 @@ export async function keyboardRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { action, text } = req.body;
     if (!text?.trim()) return reply.code(400).send({ error: 'Text required' });
-    const _prompt = getRedactionPrompt(action, text);
+    void getRedactionPrompt(action, text);
     // TODO: Call Claude Haiku with _prompt, return result
     return { original: text, action, result: `[${action}: ${text.slice(0, 30)}...]` };
   });
@@ -51,7 +51,7 @@ export async function keyboardRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { text, target_language } = req.body;
     if (!text?.trim()) return reply.code(400).send({ error: 'Text required' });
-    const _prompt = getTranslationPrompt(text, target_language);
+    void getTranslationPrompt(text, target_language);
     // TODO: Call Claude Haiku with prompt, return result
     return { original: text, target_language, translation: `[Traduction ${target_language}: ${text.slice(0, 30)}...]` };
   });
