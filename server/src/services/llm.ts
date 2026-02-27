@@ -1,12 +1,20 @@
 /**
  * EL-008 — LLM Service (Claude Haiku + Prompt Caching)
  *
- * Handles all interactions with the Anthropic Claude API.
- * Supports streaming, prompt caching, and conversation history.
+ * Supports two modes:
+ * - API mode: Direct Anthropic API (production, requires ANTHROPIC_API_KEY)
+ * - Claude Code SDK mode: Uses Claude Code CLI via subprocess (dev/test, uses Pro subscription)
+ *
+ * Set LLM_MODE=sdk to use Claude Code SDK (cheaper for testing).
+ * Set LLM_MODE=api (default) for production API calls.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import type { FastifyBaseLogger } from 'fastify';
+
+const execFileAsync = promisify(execFile);
 
 // Types
 interface Message {
@@ -62,18 +70,61 @@ const VERBOSITY_INSTRUCTIONS: Record<string, string> = {
 };
 
 export class LLMService {
-  private client: Anthropic;
+  private client: Anthropic | null;
   private config: LLMConfig;
   private logger: FastifyBaseLogger;
+  private mode: 'api' | 'sdk';
 
   constructor(logger: FastifyBaseLogger) {
-    this.client = new Anthropic();
+    this.mode = (process.env['LLM_MODE'] ?? 'api') as 'api' | 'sdk';
+    this.client = this.mode === 'api' ? new Anthropic() : null;
     this.config = {
       model: process.env['ANTHROPIC_MODEL'] ?? 'claude-3-5-haiku-20241022',
       maxTokens: parseInt(process.env['LLM_MAX_TOKENS'] ?? '1024', 10),
       temperature: parseFloat(process.env['LLM_TEMPERATURE'] ?? '0.7'),
     };
     this.logger = logger;
+    this.logger.info({ msg: 'LLM Service initialized', mode: this.mode, model: this.config.model });
+  }
+
+  /**
+   * Chat via Claude Code CLI (uses Pro subscription, no API costs).
+   * Calls `claude` CLI as a subprocess.
+   */
+  private async chatViaSDK(systemPrompt: string, userMessage: string): Promise<ChatResult> {
+    const startTime = Date.now();
+
+    try {
+      const fullPrompt = `${systemPrompt}\n\n---\n\nUser: ${userMessage}`;
+
+      const { stdout } = await execFileAsync('claude', [
+        '-p', fullPrompt,
+        '--output-format', 'text',
+        '--max-turns', '1',
+      ], {
+        timeout: 30_000,
+        env: { ...process.env, CLAUDE_CODE_ENTRYPOINT: 'elio-server' },
+      });
+
+      const duration = Date.now() - startTime;
+      this.logger.info({
+        msg: 'LLM SDK response',
+        duration,
+        mode: 'sdk',
+        textLength: stdout.length,
+      });
+
+      return {
+        text: stdout.trim(),
+        tokensIn: 0, // SDK doesn't report tokens
+        tokensOut: 0,
+        cacheHit: false,
+        stopReason: 'end_turn',
+      };
+    } catch (error) {
+      this.logger.error({ msg: 'Claude SDK error', error });
+      throw error;
+    }
   }
 
   /**
@@ -143,6 +194,16 @@ Tu peux :
    */
   async chat(options: ChatOptions): Promise<ChatResult> {
     const { message, history = [], memories, userSettings, tools } = options;
+
+    // SDK mode: use Claude Code CLI
+    if (this.mode === 'sdk') {
+      const systemBlocks = this.buildSystemPrompt(userSettings, memories);
+      const systemText = systemBlocks.map((b) => b.text).join('\n\n');
+      const contextMessages = history.slice(-5).map((m) => `${m.role}: ${m.content}`).join('\n');
+      const fullContext = contextMessages ? `${systemText}\n\nConversation récente:\n${contextMessages}` : systemText;
+      return this.chatViaSDK(fullContext, message);
+    }
+
     const startTime = Date.now();
 
     // Build messages array (last 20)
