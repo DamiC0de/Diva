@@ -1,0 +1,249 @@
+/**
+ * EL-008 — LLM Service (Claude Haiku + Prompt Caching)
+ *
+ * Handles all interactions with the Anthropic Claude API.
+ * Supports streaming, prompt caching, and conversation history.
+ */
+
+import Anthropic from '@anthropic-ai/sdk';
+import type { FastifyBaseLogger } from 'fastify';
+
+// Types
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface LLMConfig {
+  model: string;
+  maxTokens: number;
+  temperature: number;
+}
+
+interface UserSettings {
+  personality: {
+    tone: 'friendly' | 'professional' | 'casual';
+    verbosity: 'concise' | 'normal' | 'detailed';
+    formality: 'tu' | 'vous';
+    humor: boolean;
+  };
+  name?: string;
+}
+
+interface ChatOptions {
+  userId: string;
+  message: string;
+  history?: Message[];
+  memories?: string[];
+  userSettings?: UserSettings;
+  tools?: Anthropic.Tool[];
+}
+
+interface ChatResult {
+  text: string;
+  tokensIn: number;
+  tokensOut: number;
+  cacheHit: boolean;
+  stopReason: string | null;
+  toolUse?: Anthropic.ToolUseBlock[];
+}
+
+// Tone mapping
+const TONE_INSTRUCTIONS: Record<string, string> = {
+  friendly: 'Sois chaleureux, encourageant et bienveillant. Utilise un ton amical et accessible.',
+  professional: 'Sois professionnel, clair et structuré. Reste courtois mais factuel.',
+  casual: 'Sois décontracté et naturel, comme un ami proche. Tu peux utiliser du langage familier.',
+};
+
+const VERBOSITY_INSTRUCTIONS: Record<string, string> = {
+  concise: 'Sois bref et va droit au but. Pas de bavardage inutile.',
+  normal: 'Donne des réponses équilibrées, ni trop courtes ni trop longues.',
+  detailed: 'Donne des réponses complètes et détaillées. N\'hésite pas à approfondir.',
+};
+
+export class LLMService {
+  private client: Anthropic;
+  private config: LLMConfig;
+  private logger: FastifyBaseLogger;
+
+  constructor(logger: FastifyBaseLogger) {
+    this.client = new Anthropic();
+    this.config = {
+      model: process.env['ANTHROPIC_MODEL'] ?? 'claude-3-5-haiku-20241022',
+      maxTokens: parseInt(process.env['LLM_MAX_TOKENS'] ?? '1024', 10),
+      temperature: parseFloat(process.env['LLM_TEMPERATURE'] ?? '0.7'),
+    };
+    this.logger = logger;
+  }
+
+  /**
+   * Build the system prompt with caching.
+   */
+  private buildSystemPrompt(
+    userSettings?: UserSettings,
+    memories?: string[],
+  ): Anthropic.TextBlockParam[] {
+    const blocks: Anthropic.TextBlockParam[] = [];
+
+    // Core personality — CACHED (rarely changes)
+    const tone = userSettings?.personality?.tone ?? 'friendly';
+    const verbosity = userSettings?.personality?.verbosity ?? 'normal';
+    const formality = userSettings?.personality?.formality ?? 'tu';
+    const humor = userSettings?.personality?.humor ?? true;
+    const userName = userSettings?.name ?? 'l\'utilisateur';
+
+    const corePrompt = `Tu es Elio, un assistant vocal intelligent et personnel. Tu parles français.
+
+## Personnalité
+${TONE_INSTRUCTIONS[tone] ?? TONE_INSTRUCTIONS['friendly']}
+${VERBOSITY_INSTRUCTIONS[verbosity] ?? VERBOSITY_INSTRUCTIONS['normal']}
+${formality === 'vous' ? 'Vouvoie l\'utilisateur.' : 'Tutoie l\'utilisateur.'}
+${humor ? 'Tu peux faire de l\'humour quand c\'est approprié.' : 'Reste sérieux, pas d\'humour.'}
+Appelle l'utilisateur "${userName}".
+
+## Capacités
+Tu peux :
+- Lire et envoyer des emails (Gmail)
+- Gérer l'agenda (Google Calendar)
+- Chercher dans les contacts
+- Donner la météo
+- Faire des recherches web
+- Ouvrir des apps sur l'iPhone
+- Créer des rappels
+- Mémoriser des informations sur l'utilisateur
+
+## Règles
+- Réponds toujours en français
+- Pour les actions sensibles (envoyer un email, supprimer un RDV), demande confirmation
+- Si tu ne sais pas, dis-le honnêtement
+- Tes réponses seront lues à voix haute, donc reste naturel et conversationnel
+- Évite le markdown, les listes à puces et le formatage complexe dans tes réponses vocales`;
+
+    blocks.push({
+      type: 'text' as const,
+      text: corePrompt,
+      cache_control: { type: 'ephemeral' as const },
+    });
+
+    // Memories — CACHED (changes less frequently)
+    if (memories && memories.length > 0) {
+      const memoriesText = `\n\n## Ce que tu sais sur ${userName}\n${memories.map((m) => `- ${m}`).join('\n')}`;
+      blocks.push({
+        type: 'text' as const,
+        text: memoriesText,
+        cache_control: { type: 'ephemeral' as const },
+      });
+    }
+
+    return blocks;
+  }
+
+  /**
+   * Chat with Claude — returns full response.
+   */
+  async chat(options: ChatOptions): Promise<ChatResult> {
+    const { message, history = [], memories, userSettings, tools } = options;
+    const startTime = Date.now();
+
+    // Build messages array (last 20)
+    const messages: Anthropic.MessageParam[] = [];
+
+    const recentHistory = history.slice(-20);
+    for (const msg of recentHistory) {
+      messages.push({ role: msg.role, content: msg.content });
+    }
+    messages.push({ role: 'user', content: message });
+
+    // Build system prompt
+    const systemBlocks = this.buildSystemPrompt(userSettings, memories);
+
+    try {
+      const response = await this.client.messages.create({
+        model: this.config.model,
+        max_tokens: this.config.maxTokens,
+        temperature: this.config.temperature,
+        system: systemBlocks,
+        messages,
+        ...(tools && tools.length > 0 ? { tools } : {}),
+      });
+
+      // Extract text content
+      const textBlocks = response.content.filter(
+        (block): block is Anthropic.TextBlock => block.type === 'text',
+      );
+      const text = textBlocks.map((b) => b.text).join('');
+
+      // Extract tool use
+      const toolUseBlocks = response.content.filter(
+        (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use',
+      );
+
+      // Check cache usage
+      const usage = response.usage as Anthropic.Usage & {
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+      };
+      const cacheHit = (usage.cache_read_input_tokens ?? 0) > 0;
+
+      const result: ChatResult = {
+        text,
+        tokensIn: usage.input_tokens,
+        tokensOut: usage.output_tokens,
+        cacheHit,
+        stopReason: response.stop_reason,
+        ...(toolUseBlocks.length > 0 ? { toolUse: toolUseBlocks } : {}),
+      };
+
+      const duration = Date.now() - startTime;
+      this.logger.info({
+        msg: 'LLM response',
+        duration,
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
+        cacheHit,
+        cacheRead: usage.cache_read_input_tokens ?? 0,
+        cacheCreation: usage.cache_creation_input_tokens ?? 0,
+        stopReason: result.stopReason,
+        hasToolUse: toolUseBlocks.length > 0,
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error({ msg: 'LLM error', error });
+      throw error;
+    }
+  }
+
+  /**
+   * Chat with streaming — yields tokens as they come.
+   */
+  async *chatStream(options: ChatOptions): AsyncGenerator<string> {
+    const { message, history = [], memories, userSettings } = options;
+
+    const messages: Anthropic.MessageParam[] = [];
+    const recentHistory = history.slice(-20);
+    for (const msg of recentHistory) {
+      messages.push({ role: msg.role, content: msg.content });
+    }
+    messages.push({ role: 'user', content: message });
+
+    const systemBlocks = this.buildSystemPrompt(userSettings, memories);
+
+    const stream = this.client.messages.stream({
+      model: this.config.model,
+      max_tokens: this.config.maxTokens,
+      temperature: this.config.temperature,
+      system: systemBlocks,
+      messages,
+    });
+
+    for await (const event of stream) {
+      if (
+        event.type === 'content_block_delta' &&
+        event.delta.type === 'text_delta'
+      ) {
+        yield event.delta.text;
+      }
+    }
+  }
+}

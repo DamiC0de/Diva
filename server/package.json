@@ -18,12 +18,14 @@
   "license": "ISC",
   "packageManager": "pnpm@10.30.3",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@fastify/cors": "^11.2.0",
     "@fastify/env": "^5.0.3",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/websocket": "^11.2.0",
     "dotenv": "^17.3.1",
-    "fastify": "^5.7.4"
+    "fastify": "^5.7.4",
+    "fastify-plugin": "^5.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
