@@ -6,6 +6,7 @@ import { registerWebSocket } from './plugins/websocket.js';
 import authPlugin from './plugins/auth.js';
 import { healthRoutes } from './routes/health.js';
 import { pingRoutes } from './routes/ping.js';
+import { settingsRoutes } from './routes/settings.js';
 import { userRoutes } from './routes/user.js';
 import { wsRoutes } from './routes/ws.js';
 
@@ -34,6 +35,7 @@ export async function buildApp() {
   // Routes
   await app.register(healthRoutes);
   await app.register(pingRoutes);
+  await app.register(settingsRoutes);
   await app.register(userRoutes);
   await app.register(wsRoutes);
 
