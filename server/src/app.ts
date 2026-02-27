@@ -4,6 +4,8 @@ import { registerCors } from './plugins/cors.js';
 import { registerRateLimit } from './plugins/rateLimit.js';
 import { registerWebSocket } from './plugins/websocket.js';
 import authPlugin from './plugins/auth.js';
+import monitoringPlugin from './plugins/monitoring.js';
+import { billingRoutes } from './routes/billing.js';
 import { healthRoutes } from './routes/health.js';
 import { pingRoutes } from './routes/ping.js';
 import { settingsRoutes } from './routes/settings.js';
@@ -29,12 +31,14 @@ export async function buildApp() {
   await registerRateLimit(app);
   await registerWebSocket(app);
 
-  // Auth
+  // Auth & monitoring
   await app.register(authPlugin);
+  await app.register(monitoringPlugin);
 
   // Routes
   await app.register(healthRoutes);
   await app.register(pingRoutes);
+  await app.register(billingRoutes);
   await app.register(settingsRoutes);
   await app.register(userRoutes);
   await app.register(wsRoutes);
