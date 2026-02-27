@@ -1,73 +1,80 @@
 /**
- * EL-027 — User Settings / Personality configuration
+ * EL-027 — Settings API (wired to Supabase)
  */
-
 import type { FastifyInstance } from 'fastify';
+import { getSupabase } from '../lib/supabase.js';
 
-interface UpdateSettingsBody {
-  personality?: {
-    tone?: 'friendly' | 'professional' | 'casual';
-    verbosity?: 'concise' | 'normal' | 'detailed';
-    formality?: 'tu' | 'vous';
-    humor?: boolean;
-  };
-  voice?: {
-    wake_word_mode?: 'always_on' | 'smart' | 'manual';
-  };
-  name?: string;
-  timezone?: string;
+interface SettingsPatchBody {
+  settings: Record<string, unknown>;
 }
 
-export async function settingsRoutes(app: FastifyInstance): Promise<void> {
+export async function settingsRoutes(app: FastifyInstance) {
+  const db = getSupabase();
+
   // Get user settings
-  app.get(
-    '/api/v1/settings',
-    { preHandler: [app.authenticate] },
-    async (request, _reply) => {
-      // TODO: fetch from Supabase users.settings WHERE id = request.userId
-      return {
-        personality: {
-          tone: 'friendly',
-          verbosity: 'normal',
-          formality: 'tu',
-          humor: true,
-        },
-        voice: {
-          wake_word_mode: 'manual',
-        },
-        name: '',
-        timezone: 'Europe/Paris',
-      };
-    },
-  );
+  app.get('/api/v1/settings', {
+    preHandler: [app.authenticate],
+  }, async (request, reply) => {
+    const { data, error } = await db
+      .from('users')
+      .select('settings')
+      .eq('id', request.userId)
+      .single();
 
-  // Update user settings (partial merge)
-  app.patch<{ Body: UpdateSettingsBody }>(
-    '/api/v1/settings',
-    { preHandler: [app.authenticate] },
-    async (request, reply) => {
-      const updates = request.body;
+    if (error) {
+      app.log.error({ msg: 'Failed to fetch settings', error });
+      return reply.code(500).send({ error: 'Impossible de charger les paramètres' });
+    }
 
-      // Validate
-      if (updates.personality?.tone &&
-        !['friendly', 'professional', 'casual'].includes(updates.personality.tone)) {
-        return reply.code(400).send({ error: 'Invalid tone' });
-      }
+    return { settings: data?.settings ?? {} };
+  });
 
-      if (updates.personality?.verbosity &&
-        !['concise', 'normal', 'detailed'].includes(updates.personality.verbosity)) {
-        return reply.code(400).send({ error: 'Invalid verbosity' });
-      }
+  // Update settings (JSONB merge)
+  app.patch<{ Body: SettingsPatchBody }>('/api/v1/settings', {
+    preHandler: [app.authenticate],
+  }, async (request, reply) => {
+    const { settings: newSettings } = request.body;
 
-      // TODO: JSONB merge update in Supabase
-      // UPDATE users SET settings = settings || $1 WHERE id = request.userId
-      app.log.info({
-        msg: 'Settings updated',
-        userId: request.userId,
-        updates,
-      });
+    if (!newSettings || typeof newSettings !== 'object') {
+      return reply.code(400).send({ error: 'Settings object required' });
+    }
 
-      return { success: true, settings: updates };
-    },
-  );
+    // Fetch current settings first for deep merge
+    const { data: current } = await db
+      .from('users')
+      .select('settings')
+      .eq('id', request.userId)
+      .single();
+
+    const merged = deepMerge(current?.settings ?? {}, newSettings);
+
+    const { data, error } = await db
+      .from('users')
+      .update({ settings: merged })
+      .eq('id', request.userId)
+      .select('settings')
+      .single();
+
+    if (error) {
+      app.log.error({ msg: 'Failed to update settings', error });
+      return reply.code(500).send({ error: 'Impossible de sauvegarder les paramètres' });
+    }
+
+    return { settings: data?.settings };
+  });
+}
+
+function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    if (
+      source[key] && typeof source[key] === 'object' && !Array.isArray(source[key]) &&
+      target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])
+    ) {
+      result[key] = deepMerge(target[key] as Record<string, unknown>, source[key] as Record<string, unknown>);
+    } else {
+      result[key] = source[key];
+    }
+  }
+  return result;
 }

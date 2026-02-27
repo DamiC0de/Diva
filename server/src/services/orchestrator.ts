@@ -11,6 +11,9 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyBaseLogger } from 'fastify';
 import type { WebSocket } from 'ws';
 import { LLMService } from './llm.js';
+import { getSupabase } from '../lib/supabase.js';
+import { MemoryRetriever } from './memoryRetriever.js';
+import { MemoryExtractor } from './memoryExtractor.js';
 
 // Request states
 export enum RequestState {
@@ -128,6 +131,7 @@ const DEFAULT_CONFIG: OrchestratorConfig = {
 interface ActiveRequest {
   id: string;
   userId: string;
+  conversationId?: string;
   state: RequestState;
   audioChunks: string[];
   startTime: number;
@@ -294,11 +298,17 @@ export class Orchestrator {
       // 1. LLM
       this.setState(socket, request, RequestState.THINKING);
 
+      // Load conversation history + relevant memories
+      const [history, memories] = await Promise.all([
+        this.loadHistory(request.userId, request.conversationId),
+        this.retrieveMemories(request.userId, text),
+      ]);
+
       const llmResult = await this.llm.chat({
         userId: request.userId,
         message: text,
-        history: [], // TODO: load from Supabase
-        memories: [], // TODO: RAG from pgvector
+        history,
+        memories,
       });
 
       if (request.cancelled) return;
@@ -498,6 +508,59 @@ export class Orchestrator {
   private sendEvent(socket: WebSocket, event: ServerEvent): void {
     if (socket.readyState === 1) { // WebSocket.OPEN
       socket.send(JSON.stringify(event));
+    }
+  }
+
+  /** Load recent conversation messages from Supabase */
+  private async loadHistory(userId: string, conversationId?: string): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
+    try {
+      const db = getSupabase();
+      let query = db
+        .from('messages')
+        .select('role, content, conversation_id, conversations!inner(user_id)')
+        .eq('conversations.user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (conversationId) {
+        query = query.eq('conversation_id', conversationId);
+      }
+
+      const { data } = await query;
+      if (!data?.length) return [];
+
+      return data
+        .reverse()
+        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+    } catch (error) {
+      this.logger.error({ msg: 'Failed to load history', error });
+      return [];
+    }
+  }
+
+  /** Retrieve relevant memories via RAG */
+  private async retrieveMemories(userId: string, query: string): Promise<string[]> {
+    try {
+      const retriever = new MemoryRetriever(this.logger);
+      const memories = await retriever.retrieve(userId, query, 5);
+      return memories.map(m => `[${m.category}] ${m.content}`);
+    } catch (error) {
+      this.logger.error({ msg: 'Failed to retrieve memories', error });
+      return [];
+    }
+  }
+
+  /** Extract and store memories after conversation ends */
+  async extractMemories(
+    userId: string,
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    conversationId: string,
+  ): Promise<void> {
+    try {
+      const extractor = new MemoryExtractor(this.logger);
+      await extractor.extract(userId, messages, conversationId);
+    } catch (error) {
+      this.logger.error({ msg: 'Memory extraction failed', error });
     }
   }
 }

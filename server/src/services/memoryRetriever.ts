@@ -1,111 +1,101 @@
 /**
- * EL-026 — Memory Retriever (RAG via pgvector)
- *
- * Retrieves relevant memories before each Claude call
- * using semantic similarity search.
+ * EL-026 — RAG Memory Retriever — wired to Supabase pgvector
  */
-
 import type { FastifyBaseLogger } from 'fastify';
+import { getSupabase } from '../lib/supabase.js';
+import { MemoryExtractor } from './memoryExtractor.js';
 
-interface Memory {
+interface RetrievedMemory {
   id: string;
   category: string;
   content: string;
-  relevanceScore: number;
-  createdAt: string;
-  similarity?: number;
-}
-
-interface RetrieveOptions {
-  userId: string;
-  query: string;
-  limit?: number;
-  minSimilarity?: number;
+  score: number;      // Combined score (semantic + recency)
+  created_at: string;
 }
 
 export class MemoryRetriever {
   private logger: FastifyBaseLogger;
+  private extractor: MemoryExtractor;
 
   constructor(logger: FastifyBaseLogger) {
     this.logger = logger;
+    this.extractor = new MemoryExtractor(logger);
   }
 
   /**
    * Retrieve relevant memories for a user query.
-   *
-   * Uses pgvector cosine distance with recency boost.
+   * Scoring: 80% semantic similarity + 20% recency boost.
    */
-  async retrieve(options: RetrieveOptions): Promise<Memory[]> {
-    const { userId, query, limit = 10, minSimilarity = 0.5 } = options;
-
+  async retrieve(
+    userId: string,
+    query: string,
+    limit = 5,
+    minSimilarity = 0.3,
+  ): Promise<RetrievedMemory[]> {
     try {
-      // 1. Generate embedding for the query
-      const queryEmbedding = await this.generateEmbedding(query);
+      const queryEmbedding = await this.extractor.generateEmbedding(query);
+      const db = getSupabase();
 
-      // 2. Search pgvector
-      // TODO: Execute against Supabase
-      //
-      // SELECT
-      //   id, category, content, relevance_score, created_at,
-      //   1 - (embedding <=> $queryEmbedding) as similarity
-      // FROM memories
-      // WHERE user_id = $userId
-      //   AND 1 - (embedding <=> $queryEmbedding) > $minSimilarity
-      // ORDER BY
-      //   (1 - (embedding <=> $queryEmbedding)) * 0.8 +
-      //   (1.0 / (1.0 + EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400 / 30)) * 0.2
-      //   DESC
-      // LIMIT $limit
-
-      this.logger.debug({
-        msg: 'Memory search',
-        userId,
-        query: query.slice(0, 50),
-        limit,
+      // Use pgvector cosine similarity via RPC
+      const { data, error } = await db.rpc('match_memories', {
+        query_embedding: queryEmbedding,
+        match_threshold: minSimilarity,
+        match_count: limit * 2, // Fetch more, then re-rank with recency
+        p_user_id: userId,
       });
 
-      // Placeholder: return empty until Supabase is connected
-      return [];
+      if (error) {
+        this.logger.error({ msg: 'Memory retrieval failed', error });
+        return [];
+      }
+
+      if (!data?.length) return [];
+
+      // Re-rank with recency boost (80% similarity + 20% recency)
+      const now = Date.now();
+      const ONE_DAY = 86400000;
+
+      const scored: RetrievedMemory[] = data.map((row: { id: string; category: string; content: string; similarity: number; created_at: string }) => {
+        const ageMs = now - new Date(row.created_at).getTime();
+        const ageDays = ageMs / ONE_DAY;
+        // Recency boost: 1.0 for today, decays to 0 after ~30 days
+        const recencyBoost = Math.max(0, 1 - ageDays / 30);
+        const score = 0.8 * row.similarity + 0.2 * recencyBoost;
+
+        return {
+          id: row.id,
+          category: row.category,
+          content: row.content,
+          score,
+          created_at: row.created_at,
+        };
+      });
+
+      // Sort by combined score and take top N
+      scored.sort((a, b) => b.score - a.score);
+      const results = scored.slice(0, limit);
+
+      this.logger.info({
+        msg: 'Memories retrieved',
+        userId,
+        query: query.slice(0, 50),
+        count: results.length,
+      });
+
+      return results;
     } catch (error) {
-      this.logger.error({ msg: 'Memory retrieval failed', error });
+      this.logger.error({ msg: 'Memory retrieval error', error });
       return [];
     }
   }
 
   /**
-   * Format memories for injection into Claude's system prompt.
+   * Format memories for injection into Claude system prompt.
    */
-  formatForPrompt(memories: Memory[], userName: string): string[] {
-    if (memories.length === 0) return [];
+  formatForPrompt(memories: RetrievedMemory[]): string {
+    if (!memories.length) return '';
 
-    // Group by category
-    const grouped: Record<string, string[]> = {};
-    for (const mem of memories) {
-      const cat = mem.category;
-      if (!grouped[cat]) grouped[cat] = [];
-      grouped[cat]!.push(mem.content);
-    }
-
-    const lines: string[] = [];
-
-    if (grouped['preference']?.length) {
-      lines.push(`Préférences de ${userName} : ${grouped['preference'].join(', ')}`);
-    }
-    if (grouped['person']?.length) {
-      lines.push(`Personnes : ${grouped['person'].join('. ')}`);
-    }
-    if (grouped['fact']?.length) {
-      lines.push(`Faits : ${grouped['fact'].join('. ')}`);
-    }
-    if (grouped['event']?.length) {
-      lines.push(`Événements : ${grouped['event'].join('. ')}`);
-    }
-
-    return lines;
-  }
-
-  private async generateEmbedding(_text: string): Promise<number[]> {
-    // TODO: same embedding API as MemoryExtractor
-    return new Array(1536).fill(0);
+    const lines = memories.map(m => `- [${m.category}] ${m.content}`);
+    return `\n\nCe que tu sais sur l'utilisateur :\n${lines.join('\n')}`;
   }
 }

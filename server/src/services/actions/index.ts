@@ -10,6 +10,7 @@ import { CONTACTS_TOOLS, isDeviceSideTool, formatDeviceExecRequest } from './con
 import { getWeather } from './weather.js';
 import { webSearch } from './webSearch.js';
 import { buildAppUrl } from './appLauncher.js';
+import { getSupabase } from '../../lib/supabase.js';
 
 // All available tools
 export function getAllTools(): Anthropic.Tool[] {
@@ -127,8 +128,48 @@ export class ActionRunner {
         };
       }
 
-      case 'create_reminder':
+      case 'create_reminder': {
+        const db = getSupabase();
+        const { error } = await db.from('memories').insert({
+          user_id: userId,
+          category: 'reminder',
+          content: input.text as string,
+          remind_at: input.datetime as string,
+          relevance_score: 0.9,
+        });
+        if (error) {
+          this.logger.error({ msg: 'Failed to create reminder', error });
+          return { result: 'Erreur lors de la création du rappel.' };
+        }
         return { result: `Rappel créé : "${input.text}" pour le ${input.datetime}` };
+      }
+
+      case 'list_reminders': {
+        const db2 = getSupabase();
+        const { data } = await db2
+          .from('memories')
+          .select('id, content, remind_at, sent')
+          .eq('user_id', userId)
+          .eq('category', 'reminder')
+          .eq('sent', false)
+          .order('remind_at', { ascending: true });
+        if (!data?.length) return { result: "Tu n'as aucun rappel actif." };
+        const list = data.map(r =>
+          `• ${r.content} — ${new Date(r.remind_at).toLocaleString('fr-FR')}`
+        ).join('\n');
+        return { result: `Tes rappels :\n${list}` };
+      }
+
+      case 'delete_reminder': {
+        const db3 = getSupabase();
+        const { error } = await db3
+          .from('memories')
+          .delete()
+          .eq('id', input.reminder_id as string)
+          .eq('user_id', userId);
+        if (error) return { result: 'Erreur lors de la suppression du rappel.' };
+        return { result: 'Rappel supprimé.' };
+      }
 
       default:
         return { result: `Outil inconnu: ${toolName}` };

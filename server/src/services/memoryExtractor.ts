@@ -1,12 +1,9 @@
 /**
- * EL-025 — Memory Extraction Service
- *
- * After conversations, extracts memorable facts and stores them
- * with embeddings for semantic search.
+ * EL-025 — Memory Extraction Service — wired to Supabase + embedding API
  */
-
 import type { FastifyBaseLogger } from 'fastify';
 import { LLMService } from './llm.js';
+import { getSupabase } from '../lib/supabase.js';
 
 interface ExtractedFact {
   category: 'preference' | 'fact' | 'person' | 'event' | 'reminder';
@@ -44,14 +41,7 @@ export class MemoryExtractor {
     this.llm = new LLMService(logger);
   }
 
-  /**
-   * Extract facts from a conversation (async, non-blocking).
-   */
-  async extract(
-    userId: string,
-    messages: Message[],
-    conversationId: string,
-  ): Promise<ExtractedFact[]> {
+  async extract(userId: string, messages: Message[], conversationId: string): Promise<ExtractedFact[]> {
     if (messages.length < 3) {
       this.logger.debug('Conversation too short for extraction, skipping');
       return [];
@@ -59,7 +49,7 @@ export class MemoryExtractor {
 
     try {
       const conversationText = messages
-        .map((m) => `${m.role === 'user' ? 'User' : 'Elio'}: ${m.content}`)
+        .map(m => `${m.role === 'user' ? 'User' : 'Elio'}: ${m.content}`)
         .join('\n');
 
       const result = await this.llm.chat({
@@ -68,7 +58,6 @@ export class MemoryExtractor {
         history: [],
       });
 
-      // Parse JSON response
       const jsonMatch = result.text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) {
         this.logger.debug('No facts extracted');
@@ -81,13 +70,48 @@ export class MemoryExtractor {
         msg: 'Facts extracted',
         conversationId,
         count: facts.length,
-        facts: facts.map((f) => f.content),
       });
 
-      // TODO: For each fact:
-      // 1. Generate embedding via API (voyage-3-lite or text-embedding-3-small)
-      // 2. Check for duplicates (cosine similarity > 0.9 → update instead of insert)
-      // 3. INSERT INTO memories (user_id, category, content, embedding, source_conversation_id, relevance_score)
+      // Store each fact in Supabase
+      const db = getSupabase();
+      for (const fact of facts) {
+        const embedding = await this.generateEmbedding(fact.content);
+
+        // Check for duplicates (cosine similarity > 0.9)
+        const { data: duplicates } = await db.rpc('match_memories', {
+          query_embedding: embedding,
+          match_threshold: 0.9,
+          match_count: 1,
+          p_user_id: userId,
+        });
+
+        if (duplicates?.length) {
+          // Update existing memory instead of inserting
+          await db
+            .from('memories')
+            .update({
+              content: fact.content,
+              embedding: JSON.stringify(embedding),
+              relevance_score: fact.relevanceScore,
+              source_conversation_id: conversationId,
+            })
+            .eq('id', duplicates[0].id);
+
+          this.logger.debug({ msg: 'Memory updated (duplicate)', content: fact.content });
+        } else {
+          // Insert new memory
+          await db.from('memories').insert({
+            user_id: userId,
+            category: fact.category,
+            content: fact.content,
+            embedding: JSON.stringify(embedding),
+            source_conversation_id: conversationId,
+            relevance_score: fact.relevanceScore,
+          });
+
+          this.logger.debug({ msg: 'Memory inserted', content: fact.content });
+        }
+      }
 
       return facts;
     } catch (error) {
@@ -96,20 +120,42 @@ export class MemoryExtractor {
     }
   }
 
-  /**
-   * Generate embedding for a text (placeholder).
-   */
-  async generateEmbedding(_text: string): Promise<number[]> {
-    // TODO: Call embedding API
-    // Option A: Voyage AI (voyage-3-lite) — $0.02/1M tokens
-    // Option B: OpenAI text-embedding-3-small — $0.02/1M tokens
-    //
-    // const response = await fetch('https://api.voyageai.com/v1/embeddings', {
-    //   method: 'POST',
-    //   headers: { Authorization: `Bearer ${VOYAGE_API_KEY}`, 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ input: [text], model: 'voyage-3-lite' }),
-    // });
+  async generateEmbedding(text: string): Promise<number[]> {
+    const apiKey = process.env['OPENAI_API_KEY'] || process.env['VOYAGE_API_KEY'];
 
-    return new Array(1536).fill(0);
+    if (!apiKey) {
+      this.logger.warn('No embedding API key configured, using zero vector');
+      return new Array(1536).fill(0);
+    }
+
+    // Use OpenAI text-embedding-3-small (1536 dims, $0.02/1M tokens)
+    if (process.env['OPENAI_API_KEY']) {
+      const res = await fetch('https://api.openai.com/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env['OPENAI_API_KEY']}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ input: text, model: 'text-embedding-3-small' }),
+      });
+
+      if (!res.ok) throw new Error(`OpenAI embedding error: ${res.status}`);
+      const data = await res.json() as { data: { embedding: number[] }[] };
+      return data.data[0]!.embedding;
+    }
+
+    // Fallback: Voyage AI (voyage-3-lite)
+    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env['VOYAGE_API_KEY']}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ input: [text], model: 'voyage-3-lite' }),
+    });
+
+    if (!res.ok) throw new Error(`Voyage AI embedding error: ${res.status}`);
+    const data = await res.json() as { data: { embedding: number[] }[] };
+    return data.data[0]!.embedding;
   }
 }
