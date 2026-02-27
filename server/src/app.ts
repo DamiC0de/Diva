@@ -5,6 +5,7 @@ import { registerRateLimit } from './plugins/rateLimit.js';
 import { registerWebSocket } from './plugins/websocket.js';
 import authPlugin from './plugins/auth.js';
 import monitoringPlugin from './plugins/monitoring.js';
+import { accountRoutes } from './routes/account.js';
 import { billingRoutes } from './routes/billing.js';
 import { healthRoutes } from './routes/health.js';
 import { memoriesRoutes } from './routes/memories.js';
@@ -37,6 +38,7 @@ export async function buildApp() {
   await app.register(monitoringPlugin);
 
   // Routes
+  await app.register(accountRoutes);
   await app.register(healthRoutes);
   await app.register(pingRoutes);
   await app.register(billingRoutes);
