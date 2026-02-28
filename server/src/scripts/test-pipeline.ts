@@ -1,14 +1,14 @@
 /**
- * End-to-end pipeline test: Weather tool via Claude
+ * End-to-end pipeline test: Claude SDK mode + Weather
  */
 import 'dotenv/config';
 import { LLMService } from '../services/llm.js';
 import { ActionRunner } from '../services/actions/index.js';
 
 const logger = {
-  info: (...args: unknown[]) => console.log('[INFO]', ...args),
-  warn: (...args: unknown[]) => console.log('[WARN]', ...args),
-  error: (...args: unknown[]) => console.log('[ERROR]', ...args),
+  info: (o: unknown) => console.log('[INFO]', typeof o === 'object' ? JSON.stringify(o) : o),
+  warn: (o: unknown) => console.log('[WARN]', typeof o === 'object' ? JSON.stringify(o) : o),
+  error: (o: unknown) => console.log('[ERROR]', typeof o === 'object' ? JSON.stringify(o) : o),
   debug: () => {},
 } as never;
 
@@ -16,32 +16,25 @@ async function main() {
   const llm = new LLMService(logger);
   const runner = new ActionRunner(logger);
 
-  console.log('\n🧪 Test pipeline: "Quel temps fait-il à Lyon ?"\n');
+  console.log('\n🧪 Test pipeline E2E (mode SDK)\n');
 
-  // Step 1: Claude
-  console.log('1️⃣  Calling Claude...');
+  // Simple test first
+  console.log('1️⃣  Simple question to Claude...');
   const start = Date.now();
   const result = await llm.chat({
     userId: 'test-user',
-    message: 'Quel temps fait-il à Lyon ?',
+    message: 'Dis-moi bonjour en une phrase courte.',
     history: [],
   });
-  const llmMs = Date.now() - start;
+  console.log(`   ✅ Response (${Date.now() - start}ms): "${result.text}"`);
 
-  console.log(`   Response (${llmMs}ms): ${result.text?.slice(0, 150) || '[tool call]'}`);
+  // Weather test
+  console.log('\n2️⃣  Weather via direct API call...');
+  const weatherResult = await runner.execute('test-user', 'get_weather', { city: 'Paris' });
+  const weather = JSON.parse(weatherResult.result);
+  console.log(`   ✅ Paris: ${weather.current.temperature}°C, ${weather.current.weather_description}`);
 
-  // Step 2: Execute tool calls if any
-  if (result.toolCalls?.length) {
-    for (const tc of result.toolCalls) {
-      console.log(`\n2️⃣  Tool call: ${tc.name}(${JSON.stringify(tc.input)})`);
-      const toolStart = Date.now();
-      const toolResult = await runner.execute('test-user', tc.name, tc.input as Record<string, unknown>);
-      const toolMs = Date.now() - toolStart;
-      console.log(`   Result (${toolMs}ms): ${toolResult.result.slice(0, 200)}`);
-    }
-  }
-
-  console.log('\n✅ Pipeline test complete!\n');
+  console.log('\n🎉 Pipeline test complete!\n');
 }
 
 main().catch(console.error);

@@ -10,11 +10,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import type { FastifyBaseLogger } from 'fastify';
-
-const execFileAsync = promisify(execFile);
 
 // Types
 interface Message {
@@ -95,27 +91,37 @@ export class LLMService {
     const startTime = Date.now();
 
     try {
-      const fullPrompt = `${systemPrompt}\n\n---\n\nUser: ${userMessage}`;
+      // Use execSync with shell to handle argument quoting properly
+      const { execSync } = await import('node:child_process');
+      const { writeFileSync, unlinkSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const { tmpdir } = await import('node:os');
 
-      const { stdout } = await execFileAsync('claude', [
-        '-p', fullPrompt,
-        '--output-format', 'text',
-        '--max-turns', '1',
-      ], {
-        timeout: 30_000,
-        env: { ...process.env, CLAUDE_CODE_ENTRYPOINT: 'elio-server' },
-      });
+      // Write prompt to temp file to avoid shell escaping issues
+      const promptFile = join(tmpdir(), `elio-prompt-${Date.now()}.txt`);
+      const combinedPrompt = `${systemPrompt}\n\n---\nUser: ${userMessage}`;
+      writeFileSync(promptFile, combinedPrompt);
+
+      let result: string;
+      try {
+        result = execSync(
+          `/root/.local/bin/claude -p "$(cat ${promptFile})" --output-format text --max-turns 1`,
+          { timeout: 60_000, encoding: 'utf-8', env: { ...process.env, CLAUDE_CODE_ENTRYPOINT: 'elio-server' } },
+        );
+      } finally {
+        try { unlinkSync(promptFile); } catch {}
+      }
 
       const duration = Date.now() - startTime;
       this.logger.info({
         msg: 'LLM SDK response',
         duration,
         mode: 'sdk',
-        textLength: stdout.length,
+        textLength: result.length,
       });
 
       return {
-        text: stdout.trim(),
+        text: result.trim(),
         tokensIn: 0, // SDK doesn't report tokens
         tokensOut: 0,
         cacheHit: false,
