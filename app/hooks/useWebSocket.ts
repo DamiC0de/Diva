@@ -87,9 +87,11 @@ export function useWebSocket(options: UseWebSocketOptions) {
   }, []);
 
   useEffect(() => {
+    // Don't connect until we have a token
+    if (!token) return;
     connect();
     return () => disconnect();
-  }, [connect, disconnect]);
+  }, [connect, disconnect, token]);
 
   return {
     connectionState,
