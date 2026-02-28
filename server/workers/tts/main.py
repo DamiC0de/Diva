@@ -1,210 +1,123 @@
 """
-Elio TTS Worker — Piper ONNX text-to-speech service.
-
-Listens on Redis queue for text synthesis jobs.
-Supports streaming by sentence for low TTFB.
+EL-007 — TTS Worker (Piper binary + Redis queue)
+Polls tts:jobs, generates audio, stores result.
 """
-
 import json
-import time
 import base64
-import io
-import re
-import wave
-import threading
-import logging
-
+import subprocess
+import tempfile
+import time
 import redis
-from piper import PiperVoice
-from flask import Flask, jsonify
+from config import Config
 
-from config import (
-    MODEL_PATH, MODEL_CONFIG,
-    REDIS_HOST, REDIS_PORT, REDIS_DB,
-    QUEUE_NAME, RESULT_PREFIX, JOB_TIMEOUT,
-    HEALTH_PORT,
-)
+def get_redis():
+    return redis.Redis(
+        host=Config.REDIS_HOST,
+        port=Config.REDIS_PORT,
+        decode_responses=True
+    )
 
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='{"time":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}',
-)
-logger = logging.getLogger("tts-worker")
+def synthesize(text: str, model_path: str) -> bytes:
+    """Run Piper TTS and return WAV audio bytes."""
+    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+        output_path = f.name
 
-# Load model at startup
-logger.info(f"Loading Piper model: {MODEL_PATH}")
-try:
-    voice = PiperVoice.load(MODEL_PATH, config_path=MODEL_CONFIG)
-    logger.info("Piper model loaded successfully")
-except Exception as e:
-    logger.warning(f"Could not load Piper model: {e}. Worker will start but synthesis will fail.")
-    voice = None
+    cmd = [
+        'piper',
+        '--model', model_path,
+        '--output_file', output_path,
+    ]
 
-# Redis
-r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
+    proc = subprocess.run(
+        cmd,
+        input=text.encode('utf-8'),
+        capture_output=True,
+        timeout=30,
+    )
 
-# Stats
-stats = {
-    "jobs_processed": 0,
-    "jobs_failed": 0,
-    "total_chars": 0,
-    "total_processing_ms": 0.0,
-    "started_at": time.time(),
-}
+    if proc.returncode != 0:
+        raise RuntimeError(f"Piper error: {proc.stderr.decode()}")
 
-# Sentence splitter
-SENTENCE_RE = re.compile(r'(?<=[.!?:;])\s+')
+    with open(output_path, 'rb') as f:
+        audio_data = f.read()
 
+    import os
+    os.unlink(output_path)
+    return audio_data
 
-def split_sentences(text: str) -> list[str]:
-    """Split text into sentences for streaming TTS."""
-    sentences = SENTENCE_RE.split(text.strip())
-    return [s.strip() for s in sentences if s.strip()]
+def synthesize_streaming(text: str, model_path: str):
+    """Split text by sentences and yield audio chunks."""
+    import re
+    sentences = re.split(r'(?<=[.!?:])\s+', text)
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        audio = synthesize(sentence, model_path)
+        yield audio
 
+def process_job(r: redis.Redis, job_data: str):
+    """Process a single TTS job."""
+    job = json.loads(job_data)
+    job_id = job['job_id']
+    text = job['text']
+    streaming = job.get('streaming', False)
 
-def synthesize_text(text: str) -> bytes:
-    """Synthesize text to WAV bytes using Piper."""
-    if voice is None:
-        raise RuntimeError("Piper model not loaded")
+    print(f"[TTS] Processing job {job_id}: {text[:50]}...")
 
-    buffer = io.BytesIO()
-    with wave.open(buffer, "wb") as wav_file:
-        voice.synthesize(text, wav_file)
-
-    return buffer.getvalue()
-
-
-def process_job(job_data: str) -> None:
-    """Process a single TTS job from Redis."""
     try:
-        job = json.loads(job_data)
-        job_id = job.get("job_id", "unknown")
-        text = job.get("text", "")
-        streaming = job.get("streaming", False)
-
-        if not text:
-            raise ValueError("Empty text")
-
-        logger.info(f"Processing job {job_id}: '{text[:60]}...' (streaming={streaming})")
-        start = time.perf_counter()
+        model_path = Config.PIPER_MODEL_PATH
 
         if streaming:
-            # Stream by sentence
-            sentences = split_sentences(text)
-            for i, sentence in enumerate(sentences):
-                audio_bytes = synthesize_text(sentence)
-                audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-
-                chunk_result = {
-                    "job_id": job_id,
-                    "status": "chunk",
-                    "chunk_index": i,
-                    "is_last": i == len(sentences) - 1,
-                    "audio_base64": audio_b64,
-                    "text": sentence,
-                }
-
-                r.rpush(f"{RESULT_PREFIX}{job_id}:chunks", json.dumps(chunk_result))
-
-            duration_ms = round((time.perf_counter() - start) * 1000)
-            r.set(
-                f"{RESULT_PREFIX}{job_id}",
-                json.dumps({
-                    "job_id": job_id,
-                    "status": "success",
-                    "chunks_count": len(sentences),
-                    "duration_ms": duration_ms,
-                }),
-                ex=60,
-            )
+            # Streaming: send chunks as they're generated
+            chunks = list(synthesize_streaming(text, model_path))
+            # For now, concatenate all chunks
+            audio_data = b''.join(chunks)
         else:
-            # Full synthesis
-            audio_bytes = synthesize_text(text)
-            audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-            duration_ms = round((time.perf_counter() - start) * 1000)
+            audio_data = synthesize(text, model_path)
 
-            r.set(
-                f"{RESULT_PREFIX}{job_id}",
-                json.dumps({
-                    "job_id": job_id,
-                    "status": "success",
-                    "audio_base64": audio_b64,
-                    "duration_ms": duration_ms,
-                    "chars": len(text),
-                }),
-                ex=60,
-            )
+        audio_b64 = base64.b64encode(audio_data).decode('utf-8')
 
-        stats["jobs_processed"] += 1
-        stats["total_chars"] += len(text)
-        stats["total_processing_ms"] += duration_ms
-        logger.info(f"Job {job_id} done in {duration_ms}ms ({len(text)} chars)")
+        result = {
+            'status': 'ok',
+            'audio_base64': audio_b64,
+            'duration_ms': len(audio_data) / 32,  # rough estimate for 16kHz mono
+        }
+
+        r.set(f"elio:result:{job_id}", json.dumps(result), ex=60)
+        print(f"[TTS] Job {job_id} completed ({len(audio_data)} bytes)")
 
     except Exception as e:
-        stats["jobs_failed"] += 1
-        logger.error(f"Job failed: {e}")
+        result = {'status': 'error', 'error': str(e)}
+        r.set(f"elio:result:{job_id}", json.dumps(result), ex=60)
+        print(f"[TTS] Job {job_id} failed: {e}")
 
-        job_id = "unknown"
-        try:
-            job_id = json.loads(job_data).get("job_id", "unknown")
-        except Exception:
-            pass
+def main():
+    print(f"[TTS] Worker starting...")
+    print(f"[TTS] Model: {Config.PIPER_MODEL_PATH}")
+    print(f"[TTS] Redis: {Config.REDIS_HOST}:{Config.REDIS_PORT}")
 
-        r.set(
-            f"{RESULT_PREFIX}{job_id}",
-            json.dumps({"job_id": job_id, "status": "error", "error": str(e)}),
-            ex=60,
-        )
-
-
-def worker_loop():
-    """Main worker loop."""
-    logger.info(f"Worker listening on queue: {QUEUE_NAME}")
+    r = get_redis()
+    r.ping()
+    print("[TTS] Connected to Redis, waiting for jobs on tts:jobs...")
 
     while True:
         try:
-            result = r.brpop(QUEUE_NAME, timeout=JOB_TIMEOUT)
+            # BRPOP blocks until a job is available (timeout 5s)
+            result = r.brpop('tts:jobs', timeout=5)
             if result:
                 _, job_data = result
-                process_job(job_data.decode("utf-8"))
+                process_job(r, job_data)
+        except KeyboardInterrupt:
+            print("[TTS] Shutting down...")
+            break
         except redis.ConnectionError:
-            logger.warning("Redis connection lost, retrying in 5s...")
+            print("[TTS] Redis connection lost, reconnecting in 5s...")
             time.sleep(5)
+            r = get_redis()
         except Exception as e:
-            logger.error(f"Worker error: {e}")
+            print(f"[TTS] Error: {e}")
             time.sleep(1)
 
-
-# Health endpoint
-health_app = Flask(__name__)
-
-
-@health_app.route("/health")
-def health():
-    uptime = round(time.time() - stats["started_at"])
-    avg_ms = 0
-    if stats["jobs_processed"] > 0:
-        avg_ms = round(stats["total_processing_ms"] / stats["jobs_processed"])
-
-    return jsonify({
-        "status": "ok",
-        "service": "tts-worker",
-        "model": MODEL_PATH,
-        "model_loaded": voice is not None,
-        "uptime_seconds": uptime,
-        "jobs_processed": stats["jobs_processed"],
-        "jobs_failed": stats["jobs_failed"],
-        "avg_processing_ms": avg_ms,
-    })
-
-
-if __name__ == "__main__":
-    health_thread = threading.Thread(
-        target=lambda: health_app.run(host="0.0.0.0", port=HEALTH_PORT),
-        daemon=True,
-    )
-    health_thread.start()
-    logger.info(f"Health endpoint running on :{HEALTH_PORT}/health")
-
-    worker_loop()
+if __name__ == '__main__':
+    main()
