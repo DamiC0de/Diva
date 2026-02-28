@@ -1,0 +1,37 @@
+# Papote Configuration Example
+# Copy this file to config.yaml and fill in your values
+
+# Claude API
+anthropic:
+  api_key: "sk-ant-your-key-here"
+  model: "claude-3-haiku-20240307"
+
+# Speech-to-Text
+stt:
+  engine: "sensevoice"  # sensevoice, whisper, sherpa
+  model_path: "./models/sensevoice-small"
+  language: "fr"
+
+# Text-to-Speech  
+tts:
+  engine: "kokoro"  # kokoro, piper
+  model_path: "./models/kokoro-82m"
+  voice: "fr_female"
+  speed: 1.0
+
+# Wake Word
+wake_word:
+  enabled: true
+  phrase: "hey papote"
+  sensitivity: 0.5
+
+# Audio
+audio:
+  input_device: "default"  # or specific device name
+  output_device: "default"
+  sample_rate: 16000
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "./logs/papote.log"

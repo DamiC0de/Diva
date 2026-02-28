@@ -1,46 +1,50 @@
-# ☀️ Elio — Ton compagnon IA vocal
+# 🎤 D.I.V.A — Digital Intelligent Voice Assistant
 
-> *"Hey Elio, c'est quoi mon programme demain ?"*
+> *Ton assistant vocal IA, local et autonome.*
 
-**Elio** est un compagnon IA vocal qui vit dans ton téléphone, comprend tout, et agit pour toi.
+**Marque : Papote** | **Wake word : "Hey Diva"**
 
-## 🎯 Ce qu'Elio fait
+---
 
-- 🗣️ **Conversation naturelle** — Discute de tout, pose des questions, fais des recherches
-- 📧 **Gère tes emails** — Résume, réponds, envoie (Gmail, Outlook)
-- 📅 **Gère ton agenda** — Crée, modifie, rappelle tes événements
-- 📱 **Contrôle ton téléphone** — Lance des apps, passe des appels, navigue
-- 🎵 **Musique** — Joue du jazz sur Spotify, contrôle Apple Music
-- 🏠 **Domotique** — Éteins les lumières, contrôle ta maison
-- 💬 **Telegram** — Lis et envoie des messages
-- 🎹 **Clavier intelligent** — Rédige dans WhatsApp, iMessage, partout
-- 🧠 **Mémoire** — Se souvient de toi, tes préférences, tes proches
+## 🚀 Le projet
+
+DIVA est un assistant vocal intelligent, 100% local, conçu pour fonctionner sans cloud. Privé, rapide, accessible à tous.
+
+- 🧠 **IA** — Propulsé par Claude Haiku (Anthropic)
+- 🎙️ **STT/TTS local** — Reconnaissance et synthèse vocale embarquées
+- 📱 **App mobile** — React Native + Expo (iOS/Android)
+- 🏠 **Hardware** — Compatible Orange Pi 5 / Rock 5B+ (self-hosted)
+- 🔒 **Privé** — Aucune donnée ne quitte ton appareil
+
+## 📁 Structure
+
+```
+diva/
+├── app/          # Application mobile (React Native + Expo)
+├── server/       # Backend API & workers (STT, TTS, orchestrateur)
+├── docs/         # Documentation technique & stories
+└── config.example.yaml  # Configuration hardware
+```
 
 ## 🏗️ Stack technique
 
 | Composant | Technologie |
 |-----------|-------------|
 | App mobile | React Native + Expo |
-| Wake word | Porcupine (Picovoice) |
-| STT | faster-whisper-small |
-| TTS | Piper ONNX |
-| LLM | Claude Haiku (Anthropic API) |
-| BDD | Supabase + pgvector |
-| Infra | Hetzner (EU) |
+| Backend | Node.js / Python |
+| IA / LLM | Claude Haiku (Anthropic) |
+| STT | Whisper (local) |
+| TTS | Piper (local) |
+| Wake word | OpenWakeWord / Porcupine |
+| Hardware | Orange Pi 5 / Rock 5B+ |
+| Base de données | Supabase (self-hosted) |
 
-## 💰 Business Model
+## 📖 Origine
 
-- **Elio Free** — 10 interactions/jour
-- **Elio Pro** — 14,99€/mois (illimité)
-- **Elio Care** — 24,99€/mois (dashboard aidant, alertes proches)
+DIVA est née de la fusion de deux projets :
+- **Elio** — L'assistant vocal mobile
+- **Papote** — Le hardware open-source pour assistant vocal B2C
 
-## 📄 Documentation
+## 📜 Licence
 
-- [PRD](docs/elio-prd.md)
-- [Architecture](docs/elio-architecture.md)
-- [Backlog MVP](docs/elio-backlog-mvp.md)
-- [Étude iOS](docs/papote-etude-app-ios-2026-02-27.md)
-
-## 📋 Licence
-
-MIT
+MIT — Fait avec ❤️ en France 🇫🇷
