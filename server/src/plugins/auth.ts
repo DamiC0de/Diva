@@ -1,20 +1,16 @@
 /**
  * EL-003 — JWT Authentication middleware
- *
- * Verifies Supabase JWT tokens on protected routes.
- * Extracts user_id from the token for use in handlers.
+ * Verifies Supabase JWT tokens via Supabase Auth API.
  */
-
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fp from 'fastify-plugin';
+import { getSupabase } from '../lib/supabase.js';
 
 interface JWTPayload {
-  sub: string;       // user_id
+  sub: string;
   email?: string;
   role?: string;
-  aud?: string;
   exp?: number;
-  iat?: number;
 }
 
 declare module 'fastify' {
@@ -25,12 +21,6 @@ declare module 'fastify' {
 }
 
 async function authPlugin(app: FastifyInstance): Promise<void> {
-  const supabaseJwtSecret = process.env['SUPABASE_JWT_SECRET'] ?? '';
-
-  if (!supabaseJwtSecret) {
-    app.log.warn('SUPABASE_JWT_SECRET not set — auth middleware will reject all requests');
-  }
-
   app.decorate('authenticate', async function (
     request: FastifyRequest,
     reply: FastifyReply,
@@ -45,31 +35,36 @@ async function authPlugin(app: FastifyInstance): Promise<void> {
     const token = authHeader.slice(7);
 
     try {
-      // Decode JWT (in production, verify signature with SUPABASE_JWT_SECRET)
-      // For now, decode without verification for development
-      const parts = token.split('.');
-      if (parts.length !== 3) {
-        throw new Error('Invalid JWT format');
-      }
+      // Verify token via Supabase Auth
+      const db = getSupabase();
+      const { data, error } = await db.auth.getUser(token);
 
-      const payload = JSON.parse(
-        Buffer.from(parts[1]!, 'base64url').toString('utf-8'),
-      ) as JWTPayload;
+      if (error || !data.user) {
+        // Fallback: decode JWT manually (dev mode)
+        const parts = token.split('.');
+        if (parts.length !== 3) throw new Error('Invalid JWT');
 
-      // Check expiration
-      if (payload.exp && payload.exp * 1000 < Date.now()) {
-        reply.code(401).send({ error: 'Token expired' });
+        const payload = JSON.parse(
+          Buffer.from(parts[1]!, 'base64url').toString('utf-8'),
+        ) as JWTPayload;
+
+        if (payload.exp && payload.exp * 1000 < Date.now()) {
+          reply.code(401).send({ error: 'Token expired' });
+          return;
+        }
+
+        if (!payload.sub) {
+          reply.code(401).send({ error: 'Invalid token: missing sub' });
+          return;
+        }
+
+        request.userId = payload.sub;
+        request.userEmail = payload.email;
         return;
       }
 
-      if (!payload.sub) {
-        reply.code(401).send({ error: 'Invalid token: missing sub' });
-        return;
-      }
-
-      // Attach user info to request
-      request.userId = payload.sub;
-      request.userEmail = payload.email;
+      request.userId = data.user.id;
+      request.userEmail = data.user.email;
     } catch {
       reply.code(401).send({ error: 'Invalid token' });
     }

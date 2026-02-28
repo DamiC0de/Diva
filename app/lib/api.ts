@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000';
+// VPS IP for dev, will be replaced by domain later
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://72.60.155.227:4000';
 
 interface ApiOptions {
   method?: string;
@@ -29,6 +30,26 @@ export async function apiCall<T>(path: string, options: ApiOptions = {}): Promis
 
   return response.json() as Promise<T>;
 }
+
+// Convenience wrapper matching axios-like interface used by hooks
+export const api = {
+  async get(path: string, token?: string) {
+    const data = await apiCall(path, { token });
+    return { data };
+  },
+  async patch(path: string, body: unknown, token?: string) {
+    const data = await apiCall(path, { method: 'PATCH', body, token });
+    return { data };
+  },
+  async delete(path: string, token?: string) {
+    const data = await apiCall(path, { method: 'DELETE', token });
+    return { data };
+  },
+  async post(path: string, body: unknown, token?: string) {
+    const data = await apiCall(path, { method: 'POST', body, token });
+    return { data };
+  },
+};
 
 export function createWebSocket(token?: string): WebSocket {
   const wsUrl = API_BASE_URL.replace('http', 'ws');
