@@ -236,7 +236,7 @@ function makeStyles(t: Theme) {
     bottom: { flex: 2, justifyContent: 'flex-end', paddingBottom: 48 },
 
     // Orb
-    logo: { width: 280, height: 280, marginBottom: 20, alignSelf: 'center' as const },
+    logo: { width: 140, height: 140, marginBottom: 16, alignSelf: 'center' as const },
     orbWrap: { width: 130, height: 130, justifyContent: 'center', alignItems: 'center', marginBottom: 36 },
     orbGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, opacity: 0.12 },
     orbCore: { width: 56, height: 56, borderRadius: 28 },
