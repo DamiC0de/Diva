@@ -183,18 +183,34 @@ const ELIO_TOOLS: import('@anthropic-ai/sdk').Anthropic.Tool[] = [
   },
   {
     name: 'open_app',
-    description: "Ouvrir une application ou lancer une action sur l'iPhone de l'utilisateur. Utilise les URL schemes iOS.",
+    description: `Ouvrir une application sur l'iPhone via son URL scheme iOS. Tu dois construire l'URL scheme toi-même.
+Exemples courants:
+- Waze navigation: waze://?q=ADRESSE&navigate=yes
+- Google Maps: comgooglemaps://?q=ADRESSE
+- Apple Maps: maps://?q=ADRESSE
+- YouTube: youtube://results?search_query=QUERY
+- YouTube Music: youtubemusic://search?q=QUERY
+- Spotify: spotify://search/QUERY
+- Safari: https://URL
+- Téléphone: tel:NUMERO
+- WhatsApp: whatsapp://send?phone=NUMERO
+- Telegram: tg://msg?text=TEXT
+- Instagram: instagram://user?username=USERNAME
+- Twitter/X: twitter://search?query=QUERY
+- Uber: uber://?action=setPickup&dropoff[formatted_address]=ADRESSE
+- Netflix: nflx://
+- Shazam: shazam://
+Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safari.`,
     input_schema: {
       type: 'object' as const,
       properties: {
-        action: {
+        url: {
           type: 'string',
-          enum: ['youtube_search', 'youtube_music_search', 'spotify_search', 'maps_search', 'phone_call', 'safari_url', 'open_url'],
-          description: "Type d'action à effectuer",
+          description: "URL scheme iOS complète à ouvrir (ex: waze://?q=Paris&navigate=yes, spotify://search/jazz, tel:0612345678)",
         },
-        query: { type: 'string', description: 'Recherche, URL, numéro de téléphone, ou terme selon le contexte' },
+        app_name: { type: 'string', description: "Nom de l'app pour le feedback utilisateur (ex: Waze, Spotify, YouTube)" },
       },
-      required: ['action', 'query'],
+      required: ['url'],
     },
   },
   {
@@ -210,19 +226,7 @@ const ELIO_TOOLS: import('@anthropic-ai/sdk').Anthropic.Tool[] = [
   },
 ];
 
-function buildAppUrl(action: string, query: string): string | null {
-  const q = encodeURIComponent(query);
-  switch (action) {
-    case 'youtube_search': return `youtube://results?search_query=${q}`;
-    case 'youtube_music_search': return `youtubemusic://search?q=${q}`;
-    case 'spotify_search': return `spotify://search/${q}`;
-    case 'maps_search': return `maps://?q=${q}`;
-    case 'phone_call': return `tel:${query.replace(/\s/g, '')}`;
-    case 'safari_url': return query.startsWith('http') ? query : `https://${query}`;
-    case 'open_url': return query;
-    default: return null;
-  }
-}
+// open_app: Claude builds the URL scheme directly, no mapping needed
 
 async function executeWeather(city: string): Promise<string> {
   try {
@@ -660,10 +664,9 @@ export class Orchestrator {
             results.push({ name: tool.name, result: await executeWeather(input.city) });
             break;
           case 'open_app': {
-            const url = buildAppUrl(input.action, input.query);
-            // Send open_url event to the app
-            results.push({ name: tool.name, result: url ? `URL à ouvrir: ${url}` : 'Action non supportée' });
-            // Store URL to send to client after LLM responds
+            const url = input.url as string;
+            const appName = (input.app_name as string) || 'l\'app';
+            results.push({ name: tool.name, result: url ? `Ouverture de ${appName}: ${url}` : 'URL manquante' });
             if (url) {
               (tool as unknown as Record<string, unknown>)._openUrl = url;
             }

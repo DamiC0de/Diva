@@ -4,6 +4,7 @@
  */
 import React, { useRef, useState } from 'react';
 import {
+  Image,
   View, FlatList, Dimensions, TextInput, TouchableOpacity,
   StyleSheet, Text,
 } from 'react-native';
@@ -62,17 +63,17 @@ export default function OnboardingScreen() {
   const WelcomePage = (
     <View key="welcome" style={s.page}>
       <View style={s.hero}>
-        <View style={s.orbWrap}>
-          <View style={[s.orbGlow, { backgroundColor: theme.primary }]} />
-          <View style={[s.orbCore, { backgroundColor: theme.primary }]} />
-          <View style={[s.orbRing, { borderColor: theme.teal }]} />
-        </View>
-        <Text style={s.brand}>elio</Text>
+        <Image
+          source={require('../../../assets/images/diva-logo.png')}
+          style={s.logo}
+          resizeMode="contain"
+        />
+        <Text style={s.brand}>diva</Text>
         <Text style={s.tagline}>Ton assistant vocal{'\n'}intelligent</Text>
       </View>
       <View style={s.bottom}>
         <Text style={s.desc}>
-          Parle naturellement. Elio comprend ta voix, exécute tes demandes et s'adapte à toi.
+          Parle naturellement. Diva comprend ta voix, exécute tes demandes et s'adapte à toi.
         </Text>
         <TouchableOpacity style={s.btn} onPress={goNext} activeOpacity={0.85}>
           <Text style={s.btnText}>Commencer</Text>
@@ -92,7 +93,7 @@ export default function OnboardingScreen() {
         </View>
         <Text style={s.title}>Accès au micro</Text>
         <Text style={s.subtitle}>
-          Pour que la magie opère, Elio a besoin d'entendre ta voix.
+          Pour que la magie opère, Diva a besoin d'entendre ta voix.
         </Text>
       </View>
       <View style={s.bottom}>
@@ -171,13 +172,14 @@ export default function OnboardingScreen() {
   const ReadyPage = (
     <View key="ready" style={s.page}>
       <View style={s.hero}>
-        <View style={s.orbWrap}>
-          <View style={[s.orbGlow, { backgroundColor: theme.teal }]} />
-          <View style={[s.orbCore, { backgroundColor: theme.teal }]} />
-        </View>
+        <Image
+          source={require('../../../assets/images/diva-logo.png')}
+          style={s.logo}
+          resizeMode="contain"
+        />
         <Text style={s.title}>Tout est prêt{data.name ? `, ${data.name}` : ''}</Text>
         <Text style={s.subtitle}>
-          Appuie sur l'orbe et parle.{'\n'}Elio fait le reste.
+          Appuie sur l'orbe et parle.{'\n'}Diva fait le reste.
         </Text>
       </View>
       <View style={s.bottom}>
@@ -233,6 +235,7 @@ function makeStyles(t: Theme) {
     bottom: { paddingBottom: 72 },
 
     // Orb
+    logo: { width: 160, height: 160, marginBottom: 28 },
     orbWrap: { width: 130, height: 130, justifyContent: 'center', alignItems: 'center', marginBottom: 36 },
     orbGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, opacity: 0.12 },
     orbCore: { width: 56, height: 56, borderRadius: 28 },

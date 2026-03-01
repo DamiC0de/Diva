@@ -56,8 +56,7 @@ export async function settingsRoutes(app: FastifyInstance) {
 
     const { data, error } = await db
       .from('users')
-      .update({ settings: merged })
-      .eq('id', request.userId)
+      .upsert({ id: request.userId, settings: merged })
       .select('settings')
       .single();
 
