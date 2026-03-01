@@ -64,7 +64,7 @@ export default function OnboardingScreen() {
     <View key="welcome" style={s.page}>
       <View style={s.hero}>
         <Image
-          source={require('../../../assets/images/diva-logo.png')}
+          source={require('../../assets/images/diva-logo.png')}
           style={s.logo}
           resizeMode="contain"
         />
@@ -173,7 +173,7 @@ export default function OnboardingScreen() {
     <View key="ready" style={s.page}>
       <View style={s.hero}>
         <Image
-          source={require('../../../assets/images/diva-logo.png')}
+          source={require('../../assets/images/diva-logo.png')}
           style={s.logo}
           resizeMode="contain"
         />
