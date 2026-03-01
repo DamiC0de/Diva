@@ -95,7 +95,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 28 },
   center: { alignItems: 'center', marginBottom: 40 },
-  logo: { width: 120, height: 120, marginBottom: 16 },
+  logo: { width: 80, height: 80, marginBottom: 16 },
   title: { fontSize: 36, fontWeight: '200', letterSpacing: 8, marginBottom: 8 },
   subtitle: { textAlign: 'center' },
   form: { gap: 12, marginBottom: 20 },
