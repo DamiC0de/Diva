@@ -569,7 +569,7 @@ export class Orchestrator {
         let current = '';
         for (const s of sentences) {
           current += s;
-          if (current.trim().length >= 40) { chunks.push(current.trim()); current = ''; }
+          if (current.trim().length >= 30) { chunks.push(current.trim()); current = ''; }
         }
         if (current.trim()) chunks.push(current.trim());
 
