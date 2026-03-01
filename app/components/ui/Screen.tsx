@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../constants/colors';
 
 interface ScreenProps {
   children: React.ReactNode;
@@ -9,8 +9,9 @@ interface ScreenProps {
 }
 
 export function Screen({ children, padded = true }: ScreenProps) {
+  const theme = useTheme();
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]}>
       <View style={[styles.container, padded && styles.padded]}>
         {children}
       </View>
@@ -21,7 +22,6 @@ export function Screen({ children, padded = true }: ScreenProps) {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   container: {
     flex: 1,

@@ -1,16 +1,9 @@
 /**
- * TranscriptOverlay — Ephemeral transcription text that fades after 3s
+ * TranscriptOverlay — Ephemeral text overlay, theme-aware.
  */
-import React, { useEffect } from 'react';
-import { StyleSheet } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withDelay,
-  withSequence,
-} from 'react-native-reanimated';
-import { Colors } from '../constants/colors';
+import React, { useEffect, useRef } from 'react';
+import { StyleSheet, Animated } from 'react-native';
+import { useTheme } from '../constants/theme';
 
 interface TranscriptOverlayProps {
   text: string | null;
@@ -18,28 +11,27 @@ interface TranscriptOverlayProps {
 }
 
 export function TranscriptOverlay({ text, role = 'user' }: TranscriptOverlayProps) {
-  const opacity = useSharedValue(0);
+  const theme = useTheme();
+  const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (text) {
-      opacity.value = withSequence(
-        withTiming(1, { duration: 200 }),
-        withDelay(3000, withTiming(0, { duration: 500 })),
-      );
+      opacity.setValue(0);
+      Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }).start();
     } else {
-      opacity.value = withTiming(0, { duration: 200 });
+      Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }).start();
     }
   }, [text]);
-
-  const style = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
 
   if (!text) return null;
 
   return (
-    <Animated.View style={[styles.container, style]}>
-      <Animated.Text style={[styles.text, role === 'assistant' && styles.assistantText]}>
+    <Animated.View style={[styles.container, { opacity }]}>
+      <Animated.Text style={[
+        styles.text,
+        { color: role === 'assistant' ? theme.text : theme.textMuted },
+        role === 'assistant' && styles.assistant,
+      ]}>
         {role === 'user' ? `"${text}"` : text}
       </Animated.Text>
     </Animated.View>
@@ -47,21 +39,7 @@ export function TranscriptOverlay({ text, role = 'user' }: TranscriptOverlayProp
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  text: {
-    fontSize: 16,
-    color: Colors.textLight,
-    textAlign: 'center',
-    fontStyle: 'italic',
-    lineHeight: 22,
-  },
-  assistantText: {
-    color: Colors.text,
-    fontStyle: 'normal',
-    fontWeight: '500',
-  },
+  container: { paddingHorizontal: 28, paddingVertical: 12, alignItems: 'center' },
+  text: { fontSize: 15, textAlign: 'center', lineHeight: 22, fontStyle: 'italic' },
+  assistant: { fontStyle: 'normal', fontWeight: '500', fontSize: 16 },
 });

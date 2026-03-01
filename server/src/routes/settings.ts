@@ -21,6 +21,12 @@ export async function settingsRoutes(app: FastifyInstance) {
       .eq('id', request.userId)
       .single();
 
+    if (error && error.code === 'PGRST116') {
+      // No row yet — create one with defaults
+      await db.from('users').upsert({ id: request.userId, settings: {} });
+      return { settings: {} };
+    }
+
     if (error) {
       app.log.error({ msg: 'Failed to fetch settings', error });
       return reply.code(500).send({ error: 'Impossible de charger les paramètres' });

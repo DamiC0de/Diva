@@ -17,13 +17,12 @@ export default function RootLayout() {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) {
-        router.replace('/(main)');
-      } else {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      if (!newSession) {
         router.replace('/(auth)/login');
       }
+      // Don't auto-navigate on auth change — let the loading effect handle routing
     });
 
     return () => subscription.unsubscribe();
@@ -32,7 +31,20 @@ export default function RootLayout() {
   useEffect(() => {
     if (!loading) {
       if (session) {
-        router.replace('/(main)');
+        // Check if onboarding completed
+        const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://72.60.155.227:4000';
+        fetch(`${API_URL}/api/v1/settings`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.settings?.onboarding_completed) {
+              router.replace('/(main)');
+            } else {
+              router.replace('/(onboarding)');
+            }
+          })
+          .catch(() => router.replace('/(main)'));
       } else {
         router.replace('/(auth)/login');
       }
@@ -41,7 +53,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
+      <StatusBar style="auto" />
       <Slot />
     </SafeAreaProvider>
   );

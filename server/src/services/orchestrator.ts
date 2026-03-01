@@ -47,7 +47,21 @@ interface CancelMessage {
   type: 'cancel';
 }
 
-type ClientMessage = AudioChunkMessage | AudioEndMessage | TextMessage | CancelMessage;
+interface StartListeningMessage {
+  type: 'start_listening';
+}
+
+interface StopListeningMessage {
+  type: 'stop_listening';
+}
+
+interface AudioMessage {
+  type: 'audio_message';
+  audio: string;
+  format: string;
+}
+
+type ClientMessage = AudioChunkMessage | AudioEndMessage | TextMessage | CancelMessage | StartListeningMessage | StopListeningMessage | AudioMessage;
 
 // WebSocket message types (server → client)
 interface StateChangeEvent {
@@ -60,6 +74,7 @@ interface TranscriptEvent {
   type: 'transcript';
   text: string;
   requestId: string;
+  final?: boolean;
 }
 
 interface TextResponseEvent {
@@ -77,6 +92,18 @@ interface AudioChunkEvent {
   requestId: string;
 }
 
+interface TTSAudioEvent {
+  type: 'tts_audio';
+  audio: string; // base64 WAV
+  requestId: string;
+}
+
+interface OpenUrlEvent {
+  type: 'open_url';
+  url: string;
+  requestId: string;
+}
+
 interface ErrorEvent {
   type: 'error';
   message: string;
@@ -88,6 +115,8 @@ type ServerEvent =
   | TranscriptEvent
   | TextResponseEvent
   | AudioChunkEvent
+  | TTSAudioEvent
+  | OpenUrlEvent
   | ErrorEvent;
 
 // STT/TTS interfaces (Redis-based workers)
@@ -120,12 +149,12 @@ interface OrchestratorConfig {
 }
 
 const DEFAULT_CONFIG: OrchestratorConfig = {
-  globalTimeoutMs: 15_000,
+  globalTimeoutMs: 45_000,
   maxConcurrentPerUser: 1,
   sttQueueName: 'stt:jobs',
-  sttResultPrefix: 'stt:result:',
+  sttResultPrefix: 'elio:result:',
   ttsQueueName: 'tts:jobs',
-  ttsResultPrefix: 'tts:result:',
+  ttsResultPrefix: 'elio:result:',
 };
 
 interface ActiveRequest {
@@ -139,6 +168,77 @@ interface ActiveRequest {
   cancelled: boolean;
 }
 
+// --- Tool definitions ---
+const ELIO_TOOLS: import('@anthropic-ai/sdk').Anthropic.Tool[] = [
+  {
+    name: 'get_weather',
+    description: 'Obtenir la météo actuelle et les prévisions pour une ville',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        city: { type: 'string', description: 'Nom de la ville (ex: Besançon, Paris)' },
+      },
+      required: ['city'],
+    },
+  },
+  {
+    name: 'open_app',
+    description: "Ouvrir une application ou lancer une action sur l'iPhone de l'utilisateur. Utilise les URL schemes iOS.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['youtube_search', 'youtube_music_search', 'spotify_search', 'maps_search', 'phone_call', 'safari_url', 'open_url'],
+          description: "Type d'action à effectuer",
+        },
+        query: { type: 'string', description: 'Recherche, URL, numéro de téléphone, ou terme selon le contexte' },
+      },
+      required: ['action', 'query'],
+    },
+  },
+  {
+    name: 'web_search',
+    description: 'Rechercher une information sur le web',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'La requête de recherche' },
+      },
+      required: ['query'],
+    },
+  },
+];
+
+function buildAppUrl(action: string, query: string): string | null {
+  const q = encodeURIComponent(query);
+  switch (action) {
+    case 'youtube_search': return `youtube://results?search_query=${q}`;
+    case 'youtube_music_search': return `youtubemusic://search?q=${q}`;
+    case 'spotify_search': return `spotify://search/${q}`;
+    case 'maps_search': return `maps://?q=${q}`;
+    case 'phone_call': return `tel:${query.replace(/\s/g, '')}`;
+    case 'safari_url': return query.startsWith('http') ? query : `https://${query}`;
+    case 'open_url': return query;
+    default: return null;
+  }
+}
+
+async function executeWeather(city: string): Promise<string> {
+  try {
+    const res = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1&lang=fr`);
+    if (!res.ok) return `Impossible d'obtenir la météo pour ${city}`;
+    const data = await res.json() as Record<string, unknown>;
+    const current = data.current_condition as Record<string, unknown>[];
+    if (!current?.[0]) return `Pas de données météo pour ${city}`;
+    const c = current[0];
+    const desc = (c.lang_fr as { value: string }[])?.[0]?.value ?? (c.weatherDesc as { value: string }[])?.[0]?.value ?? '';
+    return `Météo à ${city}: ${desc}, ${c.temp_C}°C (ressenti ${c.FeelsLikeC}°C), humidité ${c.humidity}%, vent ${c.windspeedKmph} km/h`;
+  } catch {
+    return `Erreur lors de la récupération de la météo pour ${city}`;
+  }
+}
+
 export class Orchestrator {
   private logger: FastifyBaseLogger;
   private llm: LLMService;
@@ -146,6 +246,7 @@ export class Orchestrator {
   private config: OrchestratorConfig;
   private activeRequests: Map<string, ActiveRequest> = new Map();
   private userActiveRequest: Map<string, string> = new Map(); // userId → requestId
+  private sessionHistory: Map<WebSocket, { role: 'user' | 'assistant'; content: string }[]> = new Map(); // in-memory conversation per WS session
 
   constructor(
     logger: FastifyBaseLogger,
@@ -180,6 +281,7 @@ export class Orchestrator {
     socket.on('close', () => {
       this.logger.info({ msg: 'Client disconnected', userId });
       this.cancelUserRequest(userId);
+      this.sessionHistory.delete(socket);
     });
 
     // Welcome
@@ -208,6 +310,53 @@ export class Orchestrator {
       case 'cancel':
         this.cancelUserRequest(userId);
         break;
+      // Voice-first protocol
+      case 'start_listening':
+        this.logger.info({ msg: 'Client started listening', userId });
+        break;
+      case 'stop_listening':
+        this.logger.info({ msg: 'Client stopped listening', userId });
+        break;
+      case 'audio_message':
+        // New voice-first: full audio blob as base64
+        this.handleAudioMessage(socket, userId, (message as any).audio, (message as any).format);
+        break;
+    }
+  }
+
+  private async handleAudioMessage(
+    socket: WebSocket,
+    userId: string,
+    audioBase64: string,
+    format: string,
+  ): Promise<void> {
+    this.logger.info({ msg: 'Processing audio message', userId, format, audioSize: audioBase64?.length });
+
+    // Create request
+    const request = this.getOrCreateRequest(socket, userId);
+    request.state = RequestState.TRANSCRIBING;
+    this.sendEvent(socket, { type: 'state_change', state: RequestState.TRANSCRIBING, requestId: request.id });
+
+    try {
+      // Transcribe via Groq (primary) or local worker (fallback)
+      const sttResult = await this.transcribe(request.id, audioBase64);
+      const transcript = sttResult.text;
+
+      if (!transcript || !transcript.trim()) {
+        this.sendEvent(socket, { type: 'error', message: 'Je n\'ai rien entendu, réessaie.', requestId: request.id });
+        request.state = RequestState.COMPLETED;
+        return;
+      }
+
+      this.logger.info({ msg: 'STT result', transcript });
+      this.sendEvent(socket, { type: 'transcript', text: transcript, final: true, requestId: request.id });
+
+      // Process as text
+      await this.processTextRequest(socket, request, transcript);
+    } catch (error) {
+      this.logger.error({ msg: 'Audio processing failed', error: (error as Error).message });
+      this.sendEvent(socket, { type: 'error', message: (error as Error).message, requestId: request.id });
+      this.sendEvent(socket, { type: 'state_change', state: RequestState.COMPLETED, requestId: request.id });
     }
   }
 
@@ -298,20 +447,65 @@ export class Orchestrator {
       // 1. LLM
       this.setState(socket, request, RequestState.THINKING);
 
-      // Load conversation history + relevant memories
-      const [history, memories] = await Promise.all([
-        this.loadHistory(request.userId, request.conversationId),
-        this.retrieveMemories(request.userId, text),
-      ]);
+      // Get/create session history for this WS connection
+      if (!this.sessionHistory.has(socket)) {
+        this.sessionHistory.set(socket, []);
+      }
+      const sessionHistory = this.sessionHistory.get(socket)!;
 
-      const llmResult = await this.llm.chat({
+      // Retrieve relevant memories
+      const memories = await this.retrieveMemories(request.userId, text);
+
+      // Add user message to session history
+      sessionHistory.push({ role: 'user', content: text });
+
+      let llmResult = await this.llm.chat({
         userId: request.userId,
         message: text,
-        history,
+        history: sessionHistory.slice(0, -1),
         memories,
+        tools: ELIO_TOOLS,
       });
 
       if (request.cancelled) return;
+
+      // Handle tool use (single round)
+      const urlsToOpen: string[] = [];
+      if (llmResult.toolUse && llmResult.toolUse.length > 0) {
+        const toolResults = await this.executeTools(llmResult.toolUse);
+
+        // Collect URLs to send to client
+        for (const tool of llmResult.toolUse) {
+          const openUrl = (tool as unknown as Record<string, unknown>)._openUrl as string | undefined;
+          if (openUrl) urlsToOpen.push(openUrl);
+        }
+
+        // Send tool results back to Claude for final answer
+        llmResult = await this.llm.chat({
+          userId: request.userId,
+          message: toolResults.map(r => `[Résultat de ${r.name}]: ${r.result}`).join('\n'),
+          history: [
+            ...sessionHistory.slice(0, -1),
+            { role: 'user' as const, content: text },
+            { role: 'assistant' as const, content: llmResult.text || '[utilisation outil]' },
+          ],
+          memories,
+        });
+        if (request.cancelled) return;
+      }
+
+      // Send open_url events to client
+      for (const url of urlsToOpen) {
+        this.sendEvent(socket, { type: 'open_url', url, requestId: request.id } as ServerEvent);
+      }
+
+      // Add assistant response to session history
+      sessionHistory.push({ role: 'assistant', content: llmResult.text });
+
+      // Keep only last 20 messages
+      if (sessionHistory.length > 20) {
+        sessionHistory.splice(0, sessionHistory.length - 20);
+      }
 
       this.sendEvent(socket, {
         type: 'text_response',
@@ -320,21 +514,38 @@ export class Orchestrator {
         isPartial: false,
       });
 
-      // 2. TTS
+      // 2. TTS — split by sentences for faster first-audio
       if (llmResult.text.trim()) {
         this.setState(socket, request, RequestState.SYNTHESIZING);
-        const ttsResult = await this.synthesize(request.id, llmResult.text);
 
-        if (request.cancelled) return;
+        // Split into sentences
+        const sentences = llmResult.text.match(/[^.!?:]+[.!?:]*/g) || [llmResult.text];
+        const chunks: string[] = [];
+        let current = '';
+        for (const s of sentences) {
+          current += s;
+          // Batch ~50+ chars per TTS call for efficiency
+          if (current.trim().length >= 50) {
+            chunks.push(current.trim());
+            current = '';
+          }
+        }
+        if (current.trim()) chunks.push(current.trim());
 
-        this.setState(socket, request, RequestState.STREAMING_AUDIO);
-        this.sendEvent(socket, {
-          type: 'audio_chunk',
-          data: ttsResult.audio_base64,
-          chunkIndex: 0,
-          isLast: true,
-          requestId: request.id,
-        });
+        // Synthesize and send each chunk
+        for (let i = 0; i < chunks.length; i++) {
+          if (request.cancelled) return;
+          const chunkId = `${request.id}-tts-${i}`;
+          const ttsResult = await this.synthesize(chunkId, chunks[i]);
+          this.sendEvent(socket, {
+            type: 'tts_audio',
+            audio: ttsResult.audio_base64,
+            requestId: request.id,
+          });
+          if (i === 0) {
+            this.setState(socket, request, RequestState.STREAMING_AUDIO);
+          }
+        }
       }
 
       this.setState(socket, request, RequestState.COMPLETED);
@@ -348,25 +559,129 @@ export class Orchestrator {
    * Send audio to STT worker via Redis.
    */
   private async transcribe(jobId: string, audioBase64: string): Promise<STTResult> {
+    const groqKey = process.env['GROQ_API_KEY'];
+
+    // Try Groq API first (much faster)
+    if (groqKey) {
+      try {
+        return await this.transcribeGroq(audioBase64, groqKey);
+      } catch (err) {
+        this.logger.warn({ msg: 'Groq STT failed, falling back to local worker', error: String(err) });
+      }
+    }
+
+    // Fallback: local Whisper worker via Redis
     if (!this.redis) {
-      // Fallback: return mock for development
       this.logger.warn('No Redis — returning mock STT result');
       return { text: '[mock transcription]', language: 'fr', duration_ms: 0 };
     }
 
+    this.logger.info({ msg: 'Using local STT worker' });
     const job = JSON.stringify({ job_id: jobId, audio_base64: audioBase64 });
     await this.redis.lpush(this.config.sttQueueName, job);
 
-    // Poll for result
     return this.pollResult<STTResult>(
       `${this.config.sttResultPrefix}${jobId}`,
       10_000,
     );
   }
 
+  private async transcribeGroq(audioBase64: string, apiKey: string): Promise<STTResult> {
+    const start = Date.now();
+    const audioBuffer = Buffer.from(audioBase64, 'base64');
+
+    // Build multipart form data manually
+    const boundary = `----ElioBoundary${Date.now()}`;
+    const parts: Buffer[] = [];
+
+    // file field
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.m4a"\r\nContent-Type: audio/m4a\r\n\r\n`
+    ));
+    parts.push(audioBuffer);
+    parts.push(Buffer.from('\r\n'));
+
+    // model field
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-large-v3-turbo\r\n`
+    ));
+
+    // language field
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\nfr\r\n`
+    ));
+
+    // prompt field
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\nElio est un assistant vocal intelligent.\r\n`
+    ));
+
+    parts.push(Buffer.from(`--${boundary}--\r\n`));
+
+    const body = Buffer.concat(parts);
+
+    const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Groq API ${response.status}: ${errText.slice(0, 200)}`);
+    }
+
+    const data = await response.json() as { text: string };
+    const duration = Date.now() - start;
+
+    this.logger.info({ msg: 'Groq STT result', transcript: data.text, duration, provider: 'groq' });
+
+    return {
+      text: data.text || '',
+      language: 'fr',
+      duration_ms: duration,
+    };
+  }
+
   /**
    * Send text to TTS worker via Redis.
    */
+  private async executeTools(toolUses: import('@anthropic-ai/sdk').Anthropic.ToolUseBlock[]): Promise<{ name: string; result: string }[]> {
+    const results: { name: string; result: string }[] = [];
+    for (const tool of toolUses) {
+      const input = tool.input as Record<string, string>;
+      this.logger.info({ msg: 'Executing tool', name: tool.name, input });
+      try {
+        switch (tool.name) {
+          case 'get_weather':
+            results.push({ name: tool.name, result: await executeWeather(input.city) });
+            break;
+          case 'open_app': {
+            const url = buildAppUrl(input.action, input.query);
+            // Send open_url event to the app
+            results.push({ name: tool.name, result: url ? `URL à ouvrir: ${url}` : 'Action non supportée' });
+            // Store URL to send to client after LLM responds
+            if (url) {
+              (tool as unknown as Record<string, unknown>)._openUrl = url;
+            }
+            break;
+          }
+          case 'web_search':
+            results.push({ name: tool.name, result: `Recherche web non disponible pour le moment. Réponds avec tes connaissances.` });
+            break;
+          default:
+            results.push({ name: tool.name, result: `Outil ${tool.name} non disponible` });
+        }
+      } catch (e) {
+        results.push({ name: tool.name, result: `Erreur: ${e}` });
+      }
+    }
+    return results;
+  }
+
   private async synthesize(jobId: string, text: string): Promise<TTSResult> {
     if (!this.redis) {
       this.logger.warn('No Redis — returning mock TTS result');
@@ -511,19 +826,20 @@ export class Orchestrator {
     }
   }
 
-  /** Load recent conversation messages from Supabase */
-  private async loadHistory(userId: string, conversationId?: string): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
+  /** Load recent conversation messages from Supabase (kept for future DB persistence) */
+  // @ts-ignore - kept for future use
+  private async loadHistory(_userId: string, _conversationId?: string): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
     try {
       const db = getSupabase();
       let query = db
         .from('messages')
         .select('role, content, conversation_id, conversations!inner(user_id)')
-        .eq('conversations.user_id', userId)
+        .eq('conversations.user_id', _userId)
         .order('created_at', { ascending: false })
         .limit(20);
 
-      if (conversationId) {
-        query = query.eq('conversation_id', conversationId);
+      if (_conversationId) {
+        query = query.eq('conversation_id', _conversationId);
       }
 
       const { data } = await query;

@@ -1,7 +1,7 @@
 {
-  "name": "@elio/server",
+  "name": "@diva/server",
   "version": "0.1.0",
-  "description": "Elio API Gateway — Backend Fastify",
+  "description": "Elio API Gateway \u2014 Backend Fastify",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

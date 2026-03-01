@@ -1,15 +1,17 @@
 /**
- * EL-029 — Onboarding Flow (4 steps)
+ * EL-029 — Onboarding Flow — 2026 Design
+ * Cloud Dancer + Mermaidcore palette, dark/light adaptive
  */
 import React, { useRef, useState } from 'react';
 import {
   View, FlatList, Dimensions, TextInput, TouchableOpacity,
-  StyleSheet, Animated,
+  StyleSheet, Text,
 } from 'react-native';
 import { router } from 'expo-router';
-import { Text } from '../../components/ui/Text';
-import { Button } from '../../components/ui/Button';
-import { colors } from '../../constants/colors';
+import { Audio } from 'expo-av';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '../../lib/supabase';
+import { useTheme, type Theme } from '../../constants/theme';
 
 const { width } = Dimensions.get('window');
 
@@ -20,10 +22,11 @@ interface OnboardingData {
 }
 
 export default function OnboardingScreen() {
+  const theme = useTheme();
   const flatListRef = useRef<FlatList>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [data, setData] = useState<OnboardingData>({ name: '', formality: 'tu', tone: 'friendly' });
-  const scrollX = useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
 
   const goNext = () => {
     if (currentPage < 3) {
@@ -33,133 +36,172 @@ export default function OnboardingScreen() {
   };
 
   const finish = async () => {
-    // TODO: Save settings via API + mark onboarding_completed
-    // await api.patch('/api/v1/settings', { settings: { ...data, onboarding_completed: true } });
+    try {
+      const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://72.60.155.227:4000';
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (token) {
+        await fetch(`${API_URL}/api/v1/settings`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            settings: {
+              personality: { tone: data.tone, formality: data.formality, name_preference: data.name },
+              onboarding_completed: true,
+            },
+          }),
+        });
+      }
+    } catch {}
     router.replace('/(main)');
   };
 
-  const pages = [
-    // Page 1: Welcome
-    <View key="welcome" style={styles.page}>
-      <Text style={styles.emoji}>🌅</Text>
-      <Text style={styles.title}>Bienvenue sur Elio</Text>
-      <Text style={styles.subtitle}>
-        Ton assistant intelligent qui comprend ta voix, gère tes emails, ton agenda, et bien plus encore.
-      </Text>
-      <Button title="Commencer" onPress={goNext} style={styles.btn} />
-    </View>,
+  const s = makeStyles(theme);
 
-    // Page 2: Permissions
-    <View key="permissions" style={styles.page}>
-      <Text style={styles.emoji}>🎙️</Text>
-      <Text style={styles.title}>Permissions</Text>
-      <Text style={styles.subtitle}>
-        Elio a besoin de ton micro pour la conversation vocale et des notifications pour les rappels.
-      </Text>
-      <Button
-        title="🎙️ Autoriser le micro"
-        onPress={async () => {
-          // TODO: Audio.requestPermissionsAsync()
-          goNext();
-        }}
-        style={styles.btn}
-      />
-      <Button
-        title="🔔 Autoriser les notifications"
-        variant="outline"
-        onPress={async () => {
-          // TODO: Notifications.requestPermissionsAsync()
-          goNext();
-        }}
-        style={styles.btnSecondary}
-      />
-      <TouchableOpacity onPress={goNext}>
-        <Text style={styles.skip}>Passer</Text>
-      </TouchableOpacity>
-    </View>,
-
-    // Page 3: Personalization
-    <View key="personalization" style={styles.page}>
-      <Text style={styles.emoji}>✨</Text>
-      <Text style={styles.title}>Comment t'appeler ?</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Ton prénom"
-        placeholderTextColor="#aaa"
-        value={data.name}
-        onChangeText={(t) => setData(d => ({ ...d, name: t }))}
-        autoCapitalize="words"
-      />
-
-      <Text style={styles.label}>Tu ou Vous ?</Text>
-      <View style={styles.toggleRow}>
-        {(['tu', 'vous'] as const).map(f => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.chip, data.formality === f && styles.chipActive]}
-            onPress={() => setData(d => ({ ...d, formality: f }))}
-          >
-            <Text style={[styles.chipText, data.formality === f && styles.chipTextActive]}>
-              {f === 'tu' ? '👋 Tu' : '🤝 Vous'}
-            </Text>
-          </TouchableOpacity>
-        ))}
+  // --- Page 1: Welcome ---
+  const WelcomePage = (
+    <View key="welcome" style={s.page}>
+      <View style={s.hero}>
+        <View style={s.orbWrap}>
+          <View style={[s.orbGlow, { backgroundColor: theme.primary }]} />
+          <View style={[s.orbCore, { backgroundColor: theme.primary }]} />
+          <View style={[s.orbRing, { borderColor: theme.teal }]} />
+        </View>
+        <Text style={s.brand}>elio</Text>
+        <Text style={s.tagline}>Ton assistant vocal{'\n'}intelligent</Text>
       </View>
-
-      <Text style={styles.label}>Ton préféré</Text>
-      <View style={styles.toggleRow}>
-        {[
-          { value: 'friendly', label: '😊 Amical' },
-          { value: 'professional', label: '👔 Pro' },
-          { value: 'casual', label: '😎 Cool' },
-        ].map(opt => (
-          <TouchableOpacity
-            key={opt.value}
-            style={[styles.chip, data.tone === opt.value && styles.chipActive]}
-            onPress={() => setData(d => ({ ...d, tone: opt.value as OnboardingData['tone'] }))}
-          >
-            <Text style={[styles.chipText, data.tone === opt.value && styles.chipTextActive]}>
-              {opt.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Button title="Continuer" onPress={goNext} style={styles.btn} />
-    </View>,
-
-    // Page 4: Services
-    <View key="services" style={styles.page}>
-      <Text style={styles.emoji}>📧</Text>
-      <Text style={styles.title}>Connecter tes services</Text>
-      <Text style={styles.subtitle}>
-        Connecte tes comptes pour qu'Elio puisse gérer tes emails, ton agenda et ta musique.
-      </Text>
-
-      {[
-        { icon: '📧', name: 'Gmail', desc: 'Lire et envoyer des emails' },
-        { icon: '📅', name: 'Google Calendar', desc: 'Gérer ton agenda' },
-        { icon: '🎵', name: 'Spotify', desc: 'Contrôler ta musique' },
-      ].map(service => (
-        <TouchableOpacity key={service.name} style={styles.serviceCard}>
-          <Text style={styles.serviceIcon}>{service.icon}</Text>
-          <View style={styles.serviceInfo}>
-            <Text style={styles.serviceName}>{service.name}</Text>
-            <Text style={styles.serviceDesc}>{service.desc}</Text>
-          </View>
-          <Text style={styles.connectBtn}>Connecter</Text>
+      <View style={s.bottom}>
+        <Text style={s.desc}>
+          Parle naturellement. Elio comprend ta voix, exécute tes demandes et s'adapte à toi.
+        </Text>
+        <TouchableOpacity style={s.btn} onPress={goNext} activeOpacity={0.85}>
+          <Text style={s.btnText}>Commencer</Text>
         </TouchableOpacity>
-      ))}
+      </View>
+    </View>
+  );
 
-      <Button title="Terminer 🚀" onPress={finish} style={styles.btn} />
-      <TouchableOpacity onPress={finish}>
-        <Text style={styles.skip}>Plus tard</Text>
-      </TouchableOpacity>
-    </View>,
-  ];
+  // --- Page 2: Micro ---
+  const MicroPage = (
+    <View key="micro" style={s.page}>
+      <View style={s.hero}>
+        <View style={[s.iconBadge, { backgroundColor: theme.primarySoft }]}>  
+          <View style={[s.micDot, { backgroundColor: theme.primary }]} />
+          <View style={[s.micBar, { backgroundColor: theme.primary }]} />
+          <View style={[s.micBase, { backgroundColor: theme.primary }]} />
+        </View>
+        <Text style={s.title}>Accès au micro</Text>
+        <Text style={s.subtitle}>
+          Pour que la magie opère, Elio a besoin d'entendre ta voix.
+        </Text>
+      </View>
+      <View style={s.bottom}>
+        <TouchableOpacity
+          style={s.btn}
+          onPress={async () => { await Audio.requestPermissionsAsync(); goNext(); }}
+          activeOpacity={0.85}
+        >
+          <Text style={s.btnText}>Autoriser</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={goNext} style={s.skipWrap}>
+          <Text style={s.skip}>Plus tard</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  // --- Page 3: Perso ---
+  const PersoPage = (
+    <View key="perso" style={s.page}>
+      <View style={s.form}>
+        <Text style={s.title}>Fais-le tien</Text>
+
+        <Text style={s.label}>PRÉNOM</Text>
+        <TextInput
+          style={s.input}
+          placeholder="Ton prénom"
+          placeholderTextColor={theme.textMuted}
+          value={data.name}
+          onChangeText={(t) => setData(d => ({ ...d, name: t }))}
+          autoCapitalize="words"
+          autoCorrect={false}
+        />
+
+        <Text style={s.label}>TUTOIEMENT</Text>
+        <View style={s.chips}>
+          {(['tu', 'vous'] as const).map(v => (
+            <TouchableOpacity
+              key={v}
+              style={[s.chip, data.formality === v && s.chipOn]}
+              onPress={() => setData(d => ({ ...d, formality: v }))}
+            >
+              <Text style={[s.chipText, data.formality === v && s.chipTextOn]}>
+                {v === 'tu' ? 'Tu' : 'Vous'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={s.label}>TON</Text>
+        <View style={s.chips}>
+          {[
+            { v: 'friendly', l: 'Amical' },
+            { v: 'professional', l: 'Pro' },
+            { v: 'casual', l: 'Décontracté' },
+          ].map(({ v, l }) => (
+            <TouchableOpacity
+              key={v}
+              style={[s.chip, data.tone === v && s.chipOn]}
+              onPress={() => setData(d => ({ ...d, tone: v as OnboardingData['tone'] }))}
+            >
+              <Text style={[s.chipText, data.tone === v && s.chipTextOn]}>{l}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+      <View style={s.bottom}>
+        <TouchableOpacity style={s.btn} onPress={goNext} activeOpacity={0.85}>
+          <Text style={s.btnText}>Continuer</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  // --- Page 4: Ready ---
+  const ReadyPage = (
+    <View key="ready" style={s.page}>
+      <View style={s.hero}>
+        <View style={s.orbWrap}>
+          <View style={[s.orbGlow, { backgroundColor: theme.teal }]} />
+          <View style={[s.orbCore, { backgroundColor: theme.teal }]} />
+        </View>
+        <Text style={s.title}>Tout est prêt{data.name ? `, ${data.name}` : ''}</Text>
+        <Text style={s.subtitle}>
+          Appuie sur l'orbe et parle.{'\n'}Elio fait le reste.
+        </Text>
+      </View>
+      <View style={s.bottom}>
+        <View style={s.features}>
+          {['Météo, musique, recherche', 'Mémoire contextuelle', 'Réponse vocale naturelle'].map((f, i) => (
+            <View key={i} style={s.featureRow}>
+              <View style={[s.featureCheck, { backgroundColor: theme.tealSoft }]}>
+                <Text style={[s.featureCheckText, { color: theme.teal }]}>✓</Text>
+              </View>
+              <Text style={s.featureText}>{f}</Text>
+            </View>
+          ))}
+        </View>
+        <TouchableOpacity style={[s.btn, { backgroundColor: theme.teal }]} onPress={finish} activeOpacity={0.85}>
+          <Text style={s.btnText}>Commencer à parler</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const pages = [WelcomePage, MicroPage, PersoPage, ReadyPage];
 
   return (
-    <View style={styles.container}>
+    <View style={[{ flex: 1, backgroundColor: theme.bg }, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <FlatList
         ref={flatListRef}
         data={pages}
@@ -169,41 +211,71 @@ export default function OnboardingScreen() {
         showsHorizontalScrollIndicator={false}
         scrollEnabled={false}
         keyExtractor={(_, i) => String(i)}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: false })}
       />
-      {/* Pagination dots */}
-      <View style={styles.dots}>
+      <View style={s.dots}>
         {[0, 1, 2, 3].map(i => (
-          <View key={i} style={[styles.dot, currentPage === i && styles.dotActive]} />
+          <View key={i} style={[
+            s.dot,
+            { backgroundColor: currentPage === i ? theme.primary : theme.divider },
+            currentPage === i && s.dotOn,
+          ]} />
         ))}
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  page: { width, flex: 1, paddingHorizontal: 32, justifyContent: 'center', alignItems: 'center' },
-  emoji: { fontSize: 64, marginBottom: 24 },
-  title: { fontSize: 28, fontWeight: '700', color: '#1a1a1a', textAlign: 'center', marginBottom: 12 },
-  subtitle: { fontSize: 16, color: '#666', textAlign: 'center', lineHeight: 24, marginBottom: 32 },
-  btn: { width: '100%', marginTop: 16 },
-  btnSecondary: { width: '100%', marginTop: 8 },
-  skip: { color: '#888', fontSize: 15, marginTop: 16 },
-  input: { width: '100%', height: 50, borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingHorizontal: 16, fontSize: 18, backgroundColor: '#fff', marginBottom: 24 },
-  label: { fontSize: 16, fontWeight: '600', color: '#1a1a1a', marginBottom: 8, alignSelf: 'flex-start' },
-  toggleRow: { flexDirection: 'row', gap: 10, marginBottom: 20, flexWrap: 'wrap' },
-  chip: { paddingVertical: 10, paddingHorizontal: 18, borderRadius: 20, backgroundColor: '#f0f0f0' },
-  chipActive: { backgroundColor: colors.primary },
-  chipText: { fontSize: 15, color: '#666' },
-  chipTextActive: { color: '#fff', fontWeight: '600' },
-  dots: { flexDirection: 'row', justifyContent: 'center', paddingBottom: 48, gap: 8 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ddd' },
-  dotActive: { backgroundColor: colors.primary, width: 24 },
-  serviceCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, padding: 16, width: '100%', marginBottom: 10 },
-  serviceIcon: { fontSize: 28, marginRight: 12 },
-  serviceInfo: { flex: 1 },
-  serviceName: { fontSize: 16, fontWeight: '600' },
-  serviceDesc: { fontSize: 13, color: '#888' },
-  connectBtn: { color: colors.primary, fontWeight: '600', fontSize: 14 },
-});
+function makeStyles(t: Theme) {
+  return StyleSheet.create({
+    page: { width, flex: 1, justifyContent: 'space-between', paddingHorizontal: 28 },
+    hero: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    form: { flex: 1, justifyContent: 'center', paddingTop: 20 },
+    bottom: { paddingBottom: 72 },
+
+    // Orb
+    orbWrap: { width: 130, height: 130, justifyContent: 'center', alignItems: 'center', marginBottom: 36 },
+    orbGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, opacity: 0.12 },
+    orbCore: { width: 56, height: 56, borderRadius: 28 },
+    orbRing: { position: 'absolute', width: 90, height: 90, borderRadius: 45, borderWidth: 1.5, opacity: 0.25 },
+
+    // Mic icon (pure shapes, no emoji)
+    iconBadge: { width: 80, height: 80, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 28 },
+    micDot: { width: 20, height: 28, borderRadius: 10, marginBottom: 2 },
+    micBar: { width: 2, height: 8 },
+    micBase: { width: 14, height: 2, borderRadius: 1, marginTop: 1 },
+
+    // Typography
+    brand: { fontSize: 44, fontWeight: '200', color: t.text, letterSpacing: 10, marginBottom: 12 },
+    tagline: { fontSize: 19, fontWeight: '300', color: t.textSecondary, textAlign: 'center', lineHeight: 27 },
+    title: { fontSize: 26, fontWeight: '600', color: t.text, textAlign: 'center', marginBottom: 10 },
+    subtitle: { fontSize: 16, color: t.textSecondary, textAlign: 'center', lineHeight: 24, maxWidth: 280 },
+    desc: { fontSize: 15, color: t.textMuted, textAlign: 'center', lineHeight: 22, marginBottom: 24 },
+
+    // Button
+    btn: { backgroundColor: t.primary, paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
+    btnText: { color: '#FFF', fontSize: 17, fontWeight: '600' },
+    skipWrap: { paddingVertical: 14, alignItems: 'center' },
+    skip: { color: t.textMuted, fontSize: 15 },
+
+    // Form
+    label: { fontSize: 12, fontWeight: '600', color: t.textMuted, letterSpacing: 1.5, marginBottom: 8, marginTop: 22 },
+    input: { backgroundColor: t.inputBg, borderWidth: 1, borderColor: t.inputBorder, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 17, color: t.text },
+    chips: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+    chip: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 10, backgroundColor: t.inputBg, borderWidth: 1, borderColor: t.inputBorder },
+    chipOn: { backgroundColor: t.primarySoft, borderColor: t.primary },
+    chipText: { fontSize: 15, color: t.textSecondary, fontWeight: '500' },
+    chipTextOn: { color: t.primaryLight },
+
+    // Features
+    features: { marginBottom: 28 },
+    featureRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+    featureCheck: { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+    featureCheckText: { fontSize: 14, fontWeight: '700' },
+    featureText: { fontSize: 15, color: t.textSecondary },
+
+    // Dots
+    dots: { flexDirection: 'row', justifyContent: 'center', paddingBottom: 16, gap: 6 },
+    dot: { width: 6, height: 6, borderRadius: 3 },
+    dotOn: { width: 20 },
+  });
+}

@@ -1,5 +1,6 @@
 /**
  * Elio — Voice-First Main Screen (The Orb)
+ * Single tap to start. Silence auto-detects. Tap to stop.
  */
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Text, Pressable } from 'react-native';
@@ -8,18 +9,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OrbView } from '../../components/Orb/OrbView';
 import { TranscriptOverlay } from '../../components/TranscriptOverlay';
 import { useVoiceSession } from '../../hooks/useVoiceSession';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 
 const STATE_HINTS: Record<string, string> = {
   idle: 'Appuie pour parler',
   listening: 'Je t\'écoute...',
   processing: 'Je réfléchis...',
-  speaking: 'Je parle...',
+  speaking: '',
   error: 'Oups, réessaye',
 };
 
 export default function OrbScreen() {
+  const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [token, setToken] = useState<string | null>(null);
@@ -35,45 +37,27 @@ export default function OrbScreen() {
     transcript,
     transcriptRole,
     audioLevel,
-    startListening,
-    stopListening,
+    toggleSession,
     cancel,
     isConnected,
   } = useVoiceSession({ token });
 
-  const handleOrbPress = () => {
-    if (orbState === 'idle') {
-      startListening();
-    } else if (orbState === 'listening') {
-      stopListening();
-    } else if (orbState === 'speaking') {
-      cancel();
-    }
-  };
-
-  const handleOrbLongPress = () => {
-    startListening();
-  };
-
-  const handleOrbPressOut = () => {
-    // If in long-press listening mode, stop on release
-    // (only if we were listening)
-  };
-
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Elio</Text>
+        <Text style={[styles.title, { color: theme.text }]}>elio</Text>
         <Pressable onPress={() => router.push('/settings')} hitSlop={20}>
-          <Text style={styles.settingsIcon}>⚙️</Text>
+          <View style={[styles.settingsBtn, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <Text style={[styles.settingsIcon, { color: theme.textSecondary }]}>⚙</Text>
+          </View>
         </Pressable>
       </View>
 
       {/* Connection status */}
       {!isConnected && token && (
-        <View style={styles.statusBar}>
-          <Text style={styles.statusText}>❌ Déconnecté</Text>
+        <View style={[styles.statusBar, { backgroundColor: theme.primarySoft }]}>
+          <Text style={[styles.statusText, { color: theme.primary }]}>Connexion...</Text>
         </View>
       )}
 
@@ -82,31 +66,27 @@ export default function OrbScreen() {
         <OrbView
           state={orbState}
           audioLevel={audioLevel}
-          onPress={handleOrbPress}
-          onLongPress={handleOrbLongPress}
-          onPressOut={handleOrbPressOut}
+          onPress={toggleSession}
         />
       </View>
 
       {/* State hint */}
-      <Text style={styles.hint}>{STATE_HINTS[orbState]}</Text>
+      {STATE_HINTS[orbState] ? (
+        <Text style={[styles.hint, { color: theme.textMuted }]}>{STATE_HINTS[orbState]}</Text>
+      ) : <View style={styles.hintSpacer} />}
 
-      {/* Transcript overlay */}
+      {/* Transcript */}
       <View style={styles.transcriptArea}>
         <TranscriptOverlay text={transcript} role={transcriptRole} />
       </View>
 
-      {/* Bottom spacer */}
       <View style={{ height: insets.bottom + 20 }} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -115,37 +95,28 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: Colors.text,
-    letterSpacing: -0.5,
+    fontSize: 26,
+    fontWeight: '200',
+    letterSpacing: 6,
   },
-  settingsIcon: {
-    fontSize: 24,
+  settingsBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
+  settingsIcon: { fontSize: 16 },
   statusBar: {
-    backgroundColor: '#FEF3C7',
     paddingVertical: 8,
     alignItems: 'center',
+    marginHorizontal: 24,
+    borderRadius: 8,
   },
-  statusText: {
-    fontSize: 14,
-    color: '#92400E',
-    fontWeight: '500',
-  },
-  orbArea: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  hint: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: Colors.textLight,
-    marginBottom: 8,
-  },
-  transcriptArea: {
-    minHeight: 80,
-    justifyContent: 'center',
-  },
+  statusText: { fontSize: 13, fontWeight: '500' },
+  orbArea: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  hint: { textAlign: 'center', fontSize: 15, marginBottom: 8, fontWeight: '400' },
+  hintSpacer: { height: 22, marginBottom: 8 },
+  transcriptArea: { minHeight: 80, justifyContent: 'center' },
 });

@@ -1,13 +1,14 @@
 import React from 'react';
 import { Stack } from 'expo-router';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../constants/colors';
 
 export default function MainLayout() {
+  const theme = useTheme();
   return (
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: Colors.background },
+        contentStyle: { backgroundColor: theme.bg },
       }}
     >
       <Stack.Screen name="index" />
@@ -17,8 +18,8 @@ export default function MainLayout() {
           presentation: 'modal',
           headerShown: true,
           title: 'Réglages',
-          headerStyle: { backgroundColor: Colors.background },
-          headerTintColor: Colors.text,
+          headerStyle: { backgroundColor: theme.bg },
+          headerTintColor: theme.text,
           headerShadowVisible: false,
         }}
       />

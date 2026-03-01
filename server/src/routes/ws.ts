@@ -31,9 +31,14 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    // TODO: Verify JWT and extract userId
-    // For now, accept token as userId for development
-    const userId = token;
+    // Extract userId (sub) from JWT payload
+    let userId: string;
+    try {
+      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+      userId = payload.sub;
+    } catch {
+      userId = token; // fallback
+    }
 
     app.log.info({ msg: 'WebSocket client connected', userId });
 

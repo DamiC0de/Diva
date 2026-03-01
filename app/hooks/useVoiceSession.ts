@@ -1,8 +1,10 @@
 /**
- * useVoiceSession — Main hook for voice-first interaction.
- * Tap orb → capture audio → send via WebSocket → receive + play TTS response.
+ * useVoiceSession — Voice-first interaction hook.
+ * Single tap → listen → auto-detect silence → send → get response → auto-listen again.
+ * Tap during response → stop/cancel.
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { Linking } from 'react-native';
 import { Audio } from 'expo-av';
 import type { OrbState } from '../components/Orb/OrbView';
 
@@ -18,11 +20,15 @@ interface VoiceSessionReturn {
   transcript: string | null;
   transcriptRole: 'user' | 'assistant';
   audioLevel: number;
-  startListening: () => void;
-  stopListening: () => void;
+  toggleSession: () => void;
   cancel: () => void;
   isConnected: boolean;
 }
+
+// Silence detection config
+const SILENCE_THRESHOLD = -40; // dB — below this = silence
+const SILENCE_DURATION_MS = 1500; // 1.5s of silence → auto-send
+const MIN_RECORDING_MS = 800; // don't auto-stop before 800ms
 
 export function useVoiceSession({ token }: VoiceSessionOptions): VoiceSessionReturn {
   const [orbState, setOrbState] = useState<OrbState>('idle');
@@ -34,8 +40,14 @@ export function useVoiceSession({ token }: VoiceSessionOptions): VoiceSessionRet
   const wsRef = useRef<WebSocket | null>(null);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const silenceStartRef = useRef<number | null>(null);
+  const recordingStartRef = useRef<number>(0);
+  const autoListenRef = useRef(false);
+  const stoppingRef = useRef(false);
+  const audioQueueRef = useRef<string[]>([]); // queue of base64 audio chunks
+  const isPlayingRef = useRef(false);
 
-  // WebSocket connection
+  // --- WebSocket ---
   useEffect(() => {
     if (!token) return;
 
@@ -48,7 +60,6 @@ export function useVoiceSession({ token }: VoiceSessionOptions): VoiceSessionRet
     };
 
     ws.onmessage = async (event) => {
-      // Binary = audio response
       if (typeof event.data !== 'string') {
         await playAudio(event.data);
         return;
@@ -63,42 +74,62 @@ export function useVoiceSession({ token }: VoiceSessionOptions): VoiceSessionRet
               setOrbState('processing');
             } else if (msg.state === 'speaking' || msg.state === 'SYNTHESIZING') {
               setOrbState('speaking');
-            } else if (msg.state === 'idle' || msg.state === 'COMPLETED') {
-              setOrbState('idle');
             }
+            // Don't auto-set idle from server state — we handle it ourselves
             break;
+
           case 'transcription':
+          case 'transcript':
             setTranscript(msg.text);
             setTranscriptRole('user');
             break;
+
           case 'response':
           case 'assistant_message':
-            setTranscript(msg.text || msg.content);
+          case 'text_response': {
+            const responseText = msg.text || msg.content || '';
+            setTranscript(responseText);
             setTranscriptRole('assistant');
-            // After showing, clear after 4s
-            setTimeout(() => setTranscript(null), 4000);
+            // Don't change orbState here — TTS audio events will set 'speaking'
+            // Clear transcript after display time (audio playback handles orb state)
+            const words = responseText.split(/\s+/).length;
+            const displayMs = Math.min(15000, Math.max(5000, words * 80));
+            setTimeout(() => setTranscript(null), displayMs);
             break;
+          }
+
           case 'tts_audio':
-            // Base64 audio from server
             if (msg.audio) {
-              await playBase64Audio(msg.audio);
+              enqueueAudio(msg.audio);
             }
             break;
+
+          case 'open_url':
+            if (msg.url) {
+              try { await Linking.openURL(msg.url); } catch {}
+            }
+            break;
+
           case 'error':
             setOrbState('error');
             setTranscript(msg.message);
             setTranscriptRole('assistant');
             setTimeout(() => {
-              setOrbState('idle');
               setTranscript(null);
+              if (autoListenRef.current) {
+                doStartListening();
+              } else {
+                setOrbState('idle');
+              }
             }, 3000);
             break;
+
           case 'connected':
             setOrbState('idle');
             break;
         }
       } catch {
-        // ignore parse errors
+        // ignore
       }
     };
 
@@ -118,9 +149,25 @@ export function useVoiceSession({ token }: VoiceSessionOptions): VoiceSessionRet
     };
   }, [token]);
 
-  const playBase64Audio = async (base64: string) => {
+  // --- Audio playback queue ---
+  const playNextInQueue = useCallback(async () => {
+    if (isPlayingRef.current || audioQueueRef.current.length === 0) {
+      if (audioQueueRef.current.length === 0 && !isPlayingRef.current) {
+        // All done playing
+        if (autoListenRef.current) {
+          doStartListening();
+        } else {
+          setOrbState('idle');
+        }
+      }
+      return;
+    }
+
+    isPlayingRef.current = true;
+    const base64 = audioQueueRef.current.shift()!;
+
     try {
-      setOrbState('speaking');
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
       const { sound } = await Audio.Sound.createAsync(
         { uri: `data:audio/wav;base64,${base64}` },
         { shouldPlay: true },
@@ -128,48 +175,104 @@ export function useVoiceSession({ token }: VoiceSessionOptions): VoiceSessionRet
       soundRef.current = sound;
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
-          setOrbState('idle');
           sound.unloadAsync();
+          soundRef.current = null;
+          isPlayingRef.current = false;
+          playNextInQueue();
         }
       });
     } catch {
-      setOrbState('idle');
+      isPlayingRef.current = false;
+      playNextInQueue();
     }
-  };
+  }, []);
+
+  const enqueueAudio = useCallback((base64: string) => {
+    audioQueueRef.current.push(base64);
+    setOrbState('speaking');
+    if (!isPlayingRef.current) {
+      playNextInQueue();
+    }
+  }, [playNextInQueue]);
 
   const playAudio = async (_data: unknown) => {
-    // Binary audio playback — to be implemented with proper PCM handling
     setOrbState('speaking');
     setTimeout(() => setOrbState('idle'), 2000);
   };
 
-  const startListening = useCallback(async () => {
+  // --- Recording with silence detection ---
+  const doStartListening = useCallback(async () => {
+    // Reset stopping flag — we're starting fresh
+    stoppingRef.current = false;
+
     try {
+      // Cleanup previous recording completely
+      if (recordingRef.current) {
+        try {
+          const status = await recordingRef.current.getStatusAsync();
+          if (status.isRecording || status.canRecord) {
+            await recordingRef.current.stopAndUnloadAsync();
+          }
+        } catch {}
+        recordingRef.current = null;
+      }
+
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') return;
 
+      // Reset audio mode — critical after playback
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+      });
+      // Small delay to let iOS audio session reset
+      await new Promise(r => setTimeout(r, 100));
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
       });
 
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await recording.startAsync();
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
 
       recordingRef.current = recording;
+      recordingStartRef.current = Date.now();
+      silenceStartRef.current = null;
+      stoppingRef.current = false;
       setOrbState('listening');
 
-      // Notify server
       wsRef.current?.send(JSON.stringify({ type: 'start_listening' }));
 
-      // Monitor audio levels
+      // Monitor audio levels + silence detection
       recording.setProgressUpdateInterval(100);
-      recording.setOnRecordingStatusUpdate((status) => {
-        if (status.isRecording && status.metering != null) {
-          // Convert dB to 0-1 range (metering is typically -160 to 0)
-          const normalized = Math.max(0, Math.min(1, (status.metering + 50) / 50));
-          setAudioLevel(normalized);
+      recording.setOnRecordingStatusUpdate((recStatus) => {
+        if (!recStatus.isRecording || recStatus.metering == null) return;
+
+        const db = recStatus.metering;
+        const normalized = Math.max(0, Math.min(1, (db + 50) / 50));
+        setAudioLevel(normalized);
+
+        const now = Date.now();
+        const elapsed = now - recordingStartRef.current;
+
+        // Silence detection (only after minimum recording time)
+        if (elapsed > MIN_RECORDING_MS) {
+          if (db < SILENCE_THRESHOLD) {
+            // Silent
+            if (!silenceStartRef.current) {
+              silenceStartRef.current = now;
+            } else if (now - silenceStartRef.current >= SILENCE_DURATION_MS) {
+              // Silence detected → auto-stop
+              if (!stoppingRef.current) {
+                stoppingRef.current = true;
+                doStopAndSend();
+              }
+            }
+          } else {
+            // Sound detected → reset silence timer
+            silenceStartRef.current = null;
+          }
         }
       });
     } catch (err) {
@@ -179,7 +282,7 @@ export function useVoiceSession({ token }: VoiceSessionOptions): VoiceSessionRet
     }
   }, []);
 
-  const stopListening = useCallback(async () => {
+  const doStopAndSend = useCallback(async () => {
     const recording = recordingRef.current;
     if (!recording) return;
 
@@ -192,7 +295,6 @@ export function useVoiceSession({ token }: VoiceSessionOptions): VoiceSessionRet
       recordingRef.current = null;
 
       if (uri && wsRef.current?.readyState === WebSocket.OPEN) {
-        // Read audio file and send as base64 (for now)
         const response = await fetch(uri);
         const blob = await response.blob();
         const reader = new FileReader();
@@ -201,13 +303,12 @@ export function useVoiceSession({ token }: VoiceSessionOptions): VoiceSessionRet
           wsRef.current?.send(JSON.stringify({
             type: 'audio_message',
             audio: base64,
-            format: 'wav',
+            format: 'm4a',
           }));
         };
         reader.readAsDataURL(blob);
       }
 
-      // Notify server
       wsRef.current?.send(JSON.stringify({ type: 'stop_listening' }));
 
       await Audio.setAudioModeAsync({
@@ -217,16 +318,40 @@ export function useVoiceSession({ token }: VoiceSessionOptions): VoiceSessionRet
     } catch (err) {
       console.error('Failed to stop recording:', err);
       setOrbState('idle');
+    } finally {
+      stoppingRef.current = false;
     }
   }, []);
 
+  // --- Public API ---
+
+  /** Single tap: start conversation or stop it */
+  const toggleSession = useCallback(() => {
+    if (orbState === 'idle') {
+      autoListenRef.current = true;
+      doStartListening();
+    } else if (orbState === 'listening') {
+      // Manual stop → send immediately
+      if (!stoppingRef.current) {
+        stoppingRef.current = true;
+        doStopAndSend();
+      }
+    } else {
+      // Tap during processing/speaking → cancel everything
+      cancel();
+    }
+  }, [orbState, doStartListening, doStopAndSend]);
+
   const cancel = useCallback(() => {
-    // Stop recording if active
+    autoListenRef.current = false;
+    stoppingRef.current = false;
+    audioQueueRef.current = [];
+    isPlayingRef.current = false;
+
     if (recordingRef.current) {
       recordingRef.current.stopAndUnloadAsync().catch(() => {});
       recordingRef.current = null;
     }
-    // Stop playback if active
     if (soundRef.current) {
       soundRef.current.stopAsync().catch(() => {});
       soundRef.current.unloadAsync().catch(() => {});
@@ -243,8 +368,7 @@ export function useVoiceSession({ token }: VoiceSessionOptions): VoiceSessionRet
     transcript,
     transcriptRole,
     audioLevel,
-    startListening,
-    stopListening,
+    toggleSession,
     cancel,
     isConnected,
   };

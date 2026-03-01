@@ -1,19 +1,20 @@
 {
   "expo": {
-    "name": "Elio",
-    "slug": "elio",
+    "name": "Diva",
+    "slug": "diva",
     "version": "0.1.0",
     "scheme": "elio",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#F0EEE9"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "userInterfaceStyle": "automatic"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +23,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "userInterfaceStyle": "automatic"
     },
     "web": {
       "favicon": "./assets/favicon.png"

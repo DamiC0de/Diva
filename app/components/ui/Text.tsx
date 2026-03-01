@@ -1,6 +1,6 @@
 import React from 'react';
-import { Text as RNText, StyleSheet, type TextStyle } from 'react-native';
-import { Colors } from '../../constants/colors';
+import { Text as RNText, type TextStyle } from 'react-native';
+import { useTheme } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
 
 type TextVariant = 'hero' | 'heading' | 'subheading' | 'body' | 'caption';
@@ -13,40 +13,49 @@ interface TextProps {
 }
 
 export function Text({ children, variant = 'body', color, style }: TextProps) {
+  const theme = useTheme();
+
+  const variantStyle: TextStyle = (() => {
+    switch (variant) {
+      case 'hero':
+        return {
+          fontSize: Typography.sizes.hero,
+          fontWeight: Typography.weights.bold,
+          color: theme.text,
+          lineHeight: Typography.sizes.hero * Typography.lineHeights.tight,
+        };
+      case 'heading':
+        return {
+          fontSize: Typography.sizes.xl,
+          fontWeight: Typography.weights.bold,
+          color: theme.text,
+          lineHeight: Typography.sizes.xl * Typography.lineHeights.tight,
+        };
+      case 'subheading':
+        return {
+          fontSize: Typography.sizes.lg,
+          fontWeight: Typography.weights.semibold,
+          color: theme.text,
+        };
+      case 'caption':
+        return {
+          fontSize: Typography.sizes.sm,
+          fontWeight: Typography.weights.regular,
+          color: theme.textMuted,
+        };
+      default: // body
+        return {
+          fontSize: Typography.sizes.md,
+          fontWeight: Typography.weights.regular,
+          color: theme.text,
+          lineHeight: Typography.sizes.md * Typography.lineHeights.normal,
+        };
+    }
+  })();
+
   return (
-    <RNText style={[variantStyles[variant], color ? { color } : undefined, style]}>
+    <RNText style={[variantStyle, color ? { color } : undefined, style]}>
       {children}
     </RNText>
   );
 }
-
-const variantStyles = StyleSheet.create({
-  hero: {
-    fontSize: Typography.sizes.hero,
-    fontWeight: Typography.weights.bold,
-    color: Colors.text,
-    lineHeight: Typography.sizes.hero * Typography.lineHeights.tight,
-  },
-  heading: {
-    fontSize: Typography.sizes.xl,
-    fontWeight: Typography.weights.bold,
-    color: Colors.text,
-    lineHeight: Typography.sizes.xl * Typography.lineHeights.tight,
-  },
-  subheading: {
-    fontSize: Typography.sizes.lg,
-    fontWeight: Typography.weights.semibold,
-    color: Colors.text,
-  },
-  body: {
-    fontSize: Typography.sizes.md,
-    fontWeight: Typography.weights.regular,
-    color: Colors.text,
-    lineHeight: Typography.sizes.md * Typography.lineHeights.normal,
-  },
-  caption: {
-    fontSize: Typography.sizes.sm,
-    fontWeight: Typography.weights.regular,
-    color: Colors.textLight,
-  },
-});

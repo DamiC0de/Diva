@@ -105,7 +105,7 @@ export class LLMService {
       let result: string;
       try {
         result = execSync(
-          `/root/.local/bin/claude -p "$(cat ${promptFile})" --output-format text --max-turns 1`,
+          `/root/.local/bin/claude -p "$(cat ${promptFile})" --output-format text --max-turns 1 --model haiku`,
           { timeout: 60_000, encoding: 'utf-8', env: { ...process.env, CLAUDE_CODE_ENTRYPOINT: 'elio-server' } },
         );
       } finally {
@@ -264,6 +264,7 @@ Tu peux :
       const duration = Date.now() - startTime;
       this.logger.info({
         msg: 'LLM response',
+        text: result.text.slice(0, 300),
         duration,
         tokensIn: result.tokensIn,
         tokensOut: result.tokensOut,

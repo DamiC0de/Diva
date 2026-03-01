@@ -1,6 +1,6 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, type ViewStyle } from 'react-native';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../constants/colors';
 import { Typography } from '../../constants/typography';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
@@ -14,19 +14,25 @@ interface ButtonProps {
 }
 
 export function Button({ title, onPress, variant = 'primary', disabled = false, style }: ButtonProps) {
+  const theme = useTheme();
+
+  const variantStyle: ViewStyle =
+    variant === 'primary' ? { backgroundColor: theme.primary } :
+    variant === 'secondary' ? { backgroundColor: 'transparent', borderWidth: 2, borderColor: theme.primary } :
+    { backgroundColor: 'transparent' };
+
+  const textColor =
+    variant === 'primary' ? theme.textInverse :
+    theme.primary;
+
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
-      style={[
-        styles.base,
-        variantStyles[variant],
-        disabled && styles.disabled,
-        style,
-      ]}
+      style={[styles.base, variantStyle, disabled && styles.disabled, style]}
       activeOpacity={0.7}
     >
-      <Text style={[styles.text, textVariantStyles[variant], disabled && styles.textDisabled]}>
+      <Text style={[styles.text, { color: textColor }, disabled && styles.textDisabled]}>
         {title}
       </Text>
     </TouchableOpacity>
@@ -41,40 +47,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  disabled: {
-    opacity: 0.5,
-  },
+  disabled: { opacity: 0.5 },
   text: {
     fontSize: Typography.sizes.md,
     fontWeight: Typography.weights.semibold,
   },
-  textDisabled: {
-    opacity: 0.7,
-  },
-});
-
-const variantStyles = StyleSheet.create({
-  primary: {
-    backgroundColor: Colors.primary,
-  },
-  secondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: Colors.primary,
-  },
-  ghost: {
-    backgroundColor: 'transparent',
-  },
-});
-
-const textVariantStyles = StyleSheet.create({
-  primary: {
-    color: Colors.white,
-  },
-  secondary: {
-    color: Colors.primary,
-  },
-  ghost: {
-    color: Colors.primary,
-  },
+  textDisabled: { opacity: 0.7 },
 });
