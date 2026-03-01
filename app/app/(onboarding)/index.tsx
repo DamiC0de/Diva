@@ -230,9 +230,9 @@ export default function OnboardingScreen() {
 function makeStyles(t: Theme) {
   return StyleSheet.create({
     page: { width, flex: 1, justifyContent: 'space-between', paddingHorizontal: 28 },
-    hero: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    hero: { flex: 3, justifyContent: 'center', alignItems: 'center' },
     form: { flex: 1, justifyContent: 'center', paddingTop: 20 },
-    bottom: { paddingBottom: 72 },
+    bottom: { flex: 2, justifyContent: 'flex-end', paddingBottom: 48 },
 
     // Orb
     logo: { width: 220, height: 220, marginBottom: 32, alignSelf: 'center' as const },
