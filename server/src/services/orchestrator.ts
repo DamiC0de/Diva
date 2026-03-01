@@ -324,6 +324,16 @@ export class Orchestrator {
     socket.on('close', () => {
       this.logger.info({ msg: 'Client disconnected', userId });
       this.cancelUserRequest(userId);
+
+      // Extract memories from conversation (async, fire-and-forget)
+      const history = this.sessionHistory.get(socket);
+      if (history && history.length >= 3) {
+        const conversationId = `ws-${Date.now()}`;
+        this.extractMemories(userId, history, conversationId)
+          .then(() => this.logger.info({ msg: 'Memories extracted', userId, conversationId }))
+          .catch(err => this.logger.error({ msg: 'Memory extraction failed', error: String(err) }));
+      }
+
       this.sessionHistory.delete(socket);
     });
 
