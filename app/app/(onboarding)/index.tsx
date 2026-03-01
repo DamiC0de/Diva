@@ -62,7 +62,8 @@ export default function OnboardingScreen() {
   // --- Page 1: Welcome ---
   const WelcomePage = (
     <View key="welcome" style={s.page}>
-      <View style={s.hero}>
+      <View style={{ flex: 1 }} />
+      <View style={{ alignItems: 'center' }}>
         <Image
           source={require('../../assets/images/diva-logo.png')}
           style={s.logo}
@@ -71,7 +72,7 @@ export default function OnboardingScreen() {
         <Text style={s.brand}>diva</Text>
         <Text style={s.tagline}>Ton assistant vocal{'\n'}intelligent</Text>
       </View>
-      <View style={s.bottom}>
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Text style={s.desc}>
           Parle naturellement. Diva comprend ta voix, exécute tes demandes et s'adapte à toi.
         </Text>
