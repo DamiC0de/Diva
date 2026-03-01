@@ -1,11 +1,14 @@
 import React from 'react';
-import { View, StyleSheet, TextInput, Alert } from 'react-native';
+import { View, StyleSheet, TextInput, Alert, TouchableOpacity, Image } from 'react-native';
 import { router } from 'expo-router';
-import { Screen, Text, Button } from '../../components/ui';
-import { Colors } from '../../constants/colors';
+import { Text, Button } from '../../components/ui';
+import { useTheme } from '../../constants/colors';
 import { supabase } from '../../lib/supabase';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -22,11 +25,12 @@ export default function LoginScreen() {
       if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        Alert.alert('Inscription réussie !', 'Vérifie ton email pour confirmer ton compte.');
+        const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+        if (loginError) throw loginError;
+        router.replace('/(onboarding)');
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        router.replace('/(main)');
       }
     } catch (error) {
       Alert.alert('Erreur', (error as Error).message);
@@ -35,83 +39,66 @@ export default function LoginScreen() {
     }
   };
 
-  const handleMagicLink = async () => {
-    if (!email.includes('@')) return;
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOtp({ email });
-      if (error) throw error;
-      Alert.alert('Lien envoyé !', 'Vérifie ta boîte mail pour te connecter.');
-    } catch (error) {
-      Alert.alert('Erreur', (error as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <Screen>
-      <View style={styles.container}>
-        <Text variant="hero" style={styles.title}>Elio</Text>
-        <Text variant="body" color={Colors.textLight} style={styles.subtitle}>
+    <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <View style={{ flex: 1 }} />
+
+      <View style={styles.center}>
+        <Image
+          source={require('../../assets/images/diva-logo.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+        <Text variant="hero" style={[styles.title, { color: theme.text }]}>diva</Text>
+        <Text variant="body" color={theme.textSecondary} style={styles.subtitle}>
           Ton assistant vocal intelligent
         </Text>
+      </View>
 
-        <View style={styles.form}>
-          <TextInput
-            style={styles.input}
-            placeholder="ton@email.com"
-            placeholderTextColor={Colors.textLight}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Mot de passe"
-            placeholderTextColor={Colors.textLight}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-          <Button
-            title={loading ? '...' : mode === 'login' ? 'Se connecter' : "S'inscrire"}
-            onPress={handleAuth}
-            disabled={!email.includes('@') || password.length < 6 || loading}
-          />
-          <Button
-            title="Lien magique ✨"
-            onPress={handleMagicLink}
-            variant="outline"
-            disabled={!email.includes('@') || loading}
-          />
-        </View>
-
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text variant="caption" style={styles.dividerText}>ou</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
+      <View style={styles.form}>
+        <TextInput
+          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.text }]}
+          placeholder="ton@email.com"
+          placeholderTextColor={theme.textMuted}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <TextInput
+          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.text }]}
+          placeholder="Mot de passe"
+          placeholderTextColor={theme.textMuted}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
         <Button
-          title={mode === 'login' ? "Pas de compte ? S'inscrire" : 'Déjà un compte ? Se connecter'}
-          onPress={() => setMode(m => m === 'login' ? 'signup' : 'login')}
-          variant="secondary"
+          title={loading ? '...' : mode === 'login' ? 'Se connecter' : "S'inscrire"}
+          onPress={handleAuth}
+          disabled={!email.includes('@') || password.length < 6 || loading}
         />
       </View>
-    </Screen>
+
+      <TouchableOpacity onPress={() => setMode(m => m === 'login' ? 'signup' : 'login')} style={styles.switchMode}>
+        <Text variant="body" color={theme.primary}>
+          {mode === 'login' ? "Pas de compte ? S'inscrire" : 'Déjà un compte ? Se connecter'}
+        </Text>
+      </TouchableOpacity>
+
+      <View style={{ flex: 0.5 }} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', paddingHorizontal: 24, gap: 16 },
-  title: { textAlign: 'center', color: Colors.primary },
-  subtitle: { textAlign: 'center', marginBottom: 32 },
-  form: { gap: 12 },
-  input: { backgroundColor: Colors.white, borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1, borderColor: Colors.border, color: Colors.text },
-  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 8 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
-  dividerText: { marginHorizontal: 16 },
+  container: { flex: 1, paddingHorizontal: 28 },
+  center: { alignItems: 'center', marginBottom: 40 },
+  logo: { width: 120, height: 120, marginBottom: 16 },
+  title: { fontSize: 36, fontWeight: '200', letterSpacing: 8, marginBottom: 8 },
+  subtitle: { textAlign: 'center' },
+  form: { gap: 12, marginBottom: 20 },
+  input: { borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1 },
+  switchMode: { alignItems: 'center', paddingVertical: 12 },
 });
