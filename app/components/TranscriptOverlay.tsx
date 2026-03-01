@@ -1,5 +1,5 @@
 /**
- * TranscriptOverlay — Ephemeral text overlay, theme-aware.
+ * TranscriptOverlay — Shows user speech only (voice-first: assistant is heard, not read)
  */
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Animated } from 'react-native';
@@ -15,24 +15,21 @@ export function TranscriptOverlay({ text, role = 'user' }: TranscriptOverlayProp
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (text) {
+    if (text && role === 'user') {
       opacity.setValue(0);
       Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }).start();
     } else {
       Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }).start();
     }
-  }, [text]);
+  }, [text, role]);
 
-  if (!text) return null;
+  // Voice-first: only show what the user said, not the assistant response
+  if (!text || role === 'assistant') return null;
 
   return (
     <Animated.View style={[styles.container, { opacity }]}>
-      <Animated.Text style={[
-        styles.text,
-        { color: role === 'assistant' ? theme.text : theme.textMuted },
-        role === 'assistant' && styles.assistant,
-      ]}>
-        {role === 'user' ? `"${text}"` : text}
+      <Animated.Text style={[styles.text, { color: theme.textMuted }]}>
+        {`"${text}"`}
       </Animated.Text>
     </Animated.View>
   );
@@ -41,5 +38,4 @@ export function TranscriptOverlay({ text, role = 'user' }: TranscriptOverlayProp
 const styles = StyleSheet.create({
   container: { paddingHorizontal: 28, paddingVertical: 12, alignItems: 'center' },
   text: { fontSize: 15, textAlign: 'center', lineHeight: 22, fontStyle: 'italic' },
-  assistant: { fontStyle: 'normal', fontWeight: '500', fontSize: 16 },
 });
