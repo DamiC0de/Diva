@@ -228,6 +228,43 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
 
 // open_app: Claude builds the URL scheme directly, no mapping needed
 
+async function executeWebSearch(query: string): Promise<string> {
+  try {
+    // Use DuckDuckGo HTML for search results (no API key needed)
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Diva/1.0)',
+      },
+    });
+    const html = await res.text();
+    
+    // Extract result snippets from DDG HTML
+    const results: string[] = [];
+    const snippetRegex = /<a class="result__snippet"[^>]*>(.*?)<\/a>/gs;
+    const titleRegex = /<a class="result__a"[^>]*>(.*?)<\/a>/gs;
+    
+    let match;
+    const titles: string[] = [];
+    while ((match = titleRegex.exec(html)) !== null && titles.length < 5) {
+      titles.push(match[1].replace(/<[^>]*>/g, '').trim());
+    }
+    const snippets: string[] = [];
+    while ((match = snippetRegex.exec(html)) !== null && snippets.length < 5) {
+      snippets.push(match[1].replace(/<[^>]*>/g, '').trim());
+    }
+    
+    for (let i = 0; i < Math.min(titles.length, snippets.length); i++) {
+      results.push(`${titles[i]}: ${snippets[i]}`);
+    }
+    
+    if (results.length === 0) return `Aucun résultat trouvé pour "${query}"`;
+    return `Résultats pour "${query}":\n` + results.join('\n\n');
+  } catch (e) {
+    return `Impossible de rechercher "${query}": ${String(e)}`;
+  }
+}
+
 async function executeWeather(city: string): Promise<string> {
   try {
     const res = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1&lang=fr`);
@@ -678,9 +715,16 @@ export class Orchestrator {
             }
             break;
           }
-          case 'web_search':
-            results.push({ name: tool.name, result: `Recherche web non disponible pour le moment. Réponds avec tes connaissances.` });
+          case 'web_search': {
+            const searchQuery = input.query as string;
+            try {
+              const searchResult = await executeWebSearch(searchQuery);
+              results.push({ name: tool.name, result: searchResult });
+            } catch (e) {
+              results.push({ name: tool.name, result: `Erreur de recherche: ${String(e)}` });
+            }
             break;
+          }
           default:
             results.push({ name: tool.name, result: `Outil ${tool.name} non disponible` });
         }
