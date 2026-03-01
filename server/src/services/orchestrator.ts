@@ -242,20 +242,22 @@ async function executeWebSearch(query: string): Promise<string> {
     // Extract result snippets from DDG HTML
     const results: string[] = [];
     const snippetRegex = /<a class="result__snippet"[^>]*>(.*?)<\/a>/gs;
-    const titleRegex = /<a class="result__a"[^>]*>(.*?)<\/a>/gs;
+    const titleRegex = /class="result__a"[^>]*>(.*?)<\/a>/gs;
     
     let match;
     const titles: string[] = [];
     while ((match = titleRegex.exec(html)) !== null && titles.length < 5) {
-      titles.push(match[1].replace(/<[^>]*>/g, '').trim());
+      titles.push(match[1].replace(/<[^>]*>/g, '').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim());
     }
     const snippets: string[] = [];
     while ((match = snippetRegex.exec(html)) !== null && snippets.length < 5) {
-      snippets.push(match[1].replace(/<[^>]*>/g, '').trim());
+      snippets.push(match[1].replace(/<[^>]*>/g, '').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim());
     }
     
-    for (let i = 0; i < Math.min(titles.length, snippets.length); i++) {
-      results.push(`${titles[i]}: ${snippets[i]}`);
+    for (let i = 0; i < Math.max(titles.length, snippets.length); i++) {
+      const t = titles[i] || '';
+      const s = snippets[i] || '';
+      if (t || s) results.push(t ? `${t}: ${s}` : s);
     }
     
     if (results.length === 0) return `Aucun résultat trouvé pour "${query}"`;
