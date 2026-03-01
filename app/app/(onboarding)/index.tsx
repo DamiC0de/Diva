@@ -62,7 +62,7 @@ export default function OnboardingScreen() {
   // --- Page 1: Welcome ---
   const WelcomePage = (
     <View key="welcome" style={s.page}>
-      <View style={{ flex: 1 }} />
+      <View style={{ flex: 0.6 }} />
       <View style={{ alignItems: 'center' }}>
         <Image
           source={require('../../assets/images/diva-logo.png')}
@@ -236,7 +236,7 @@ function makeStyles(t: Theme) {
     bottom: { flex: 2, justifyContent: 'flex-end', paddingBottom: 48 },
 
     // Orb
-    logo: { width: 220, height: 220, marginBottom: 32, alignSelf: 'center' as const },
+    logo: { width: 280, height: 280, marginBottom: 20, alignSelf: 'center' as const },
     orbWrap: { width: 130, height: 130, justifyContent: 'center', alignItems: 'center', marginBottom: 36 },
     orbGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, opacity: 0.12 },
     orbCore: { width: 56, height: 56, borderRadius: 28 },
