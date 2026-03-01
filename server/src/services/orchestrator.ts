@@ -736,18 +736,31 @@ export class Orchestrator {
   }
 
   private async synthesize(jobId: string, text: string): Promise<TTSResult> {
-    if (!this.redis) {
-      this.logger.warn('No Redis — returning mock TTS result');
-      return { audio_base64: '', duration_ms: 0 };
+    // Direct HTTP call to Piper TTS server (faster than Redis queue)
+    try {
+      const t0 = Date.now();
+      const res = await fetch('http://localhost:8880/v1/audio/speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: text, voice: 'fr' }),
+      });
+
+      if (!res.ok) throw new Error(`Piper HTTP ${res.status}`);
+
+      const arrayBuf = await res.arrayBuffer();
+      const audio_base64 = Buffer.from(arrayBuf).toString('base64');
+      const elapsed = Date.now() - t0;
+      this.logger.info({ msg: 'TTS synthesized', jobId, elapsed, bytes: arrayBuf.byteLength });
+
+      return { audio_base64, duration_ms: arrayBuf.byteLength / 32 };
+    } catch (err) {
+      this.logger.error({ msg: 'TTS HTTP failed, falling back to Redis', error: String(err) });
+      // Fallback to Redis worker
+      if (!this.redis) return { audio_base64: '', duration_ms: 0 };
+      const job = JSON.stringify({ job_id: jobId, text, streaming: false });
+      await this.redis.lpush(this.config.ttsQueueName, job);
+      return this.pollResult<TTSResult>(`${this.config.ttsResultPrefix}${jobId}`, 10_000);
     }
-
-    const job = JSON.stringify({ job_id: jobId, text, streaming: false });
-    await this.redis.lpush(this.config.ttsQueueName, job);
-
-    return this.pollResult<TTSResult>(
-      `${this.config.ttsResultPrefix}${jobId}`,
-      10_000,
-    );
   }
 
   /**
