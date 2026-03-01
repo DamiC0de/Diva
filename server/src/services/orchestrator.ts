@@ -463,7 +463,13 @@ export class Orchestrator {
       // Add user message to session history
       sessionHistory.push({ role: 'user', content: text });
 
-      // Check for tool use first (non-streaming)
+      // Stream LLM directly — no double call
+      let fullText = '';
+      let sentenceBuffer = '';
+      let ttsChunkIndex = 0;
+      let firstAudioSent = false;
+
+      // First try non-streaming to detect tool use
       const llmResult = await this.llm.chat({
         userId: request.userId,
         message: text,
@@ -474,10 +480,8 @@ export class Orchestrator {
 
       if (request.cancelled) return;
 
-      // Handle tool use
+      // Handle tool use (non-streaming)
       const urlsToOpen: string[] = [];
-      let streamHistory = sessionHistory.slice(0, -1);
-      let streamMessage = text;
 
       if (llmResult.toolUse && llmResult.toolUse.length > 0) {
         const toolResults = await this.executeTools(llmResult.toolUse);
@@ -488,76 +492,71 @@ export class Orchestrator {
         for (const url of urlsToOpen) {
           this.sendEvent(socket, { type: 'open_url', url, requestId: request.id } as ServerEvent);
         }
-        streamMessage = toolResults.map(r => `[Résultat de ${r.name}]: ${r.result}`).join('\n');
-        streamHistory = [
-          ...sessionHistory.slice(0, -1),
-          { role: 'user' as const, content: text },
-          { role: 'assistant' as const, content: llmResult.text || '[utilisation outil]' },
-        ];
-      }
 
-      // Stream LLM + TTS pipeline
-      let fullText = '';
-      let sentenceBuffer = '';
-      let ttsChunkIndex = 0;
-      let firstAudioSent = false;
+        // Stream the final answer after tool results
+        const toolContext = toolResults.map(r => `[Résultat de ${r.name}]: ${r.result}`).join('\n');
+        this.setState(socket, request, RequestState.SYNTHESIZING);
 
-      this.setState(socket, request, RequestState.SYNTHESIZING);
+        for await (const token of this.llm.chatStream({
+          userId: request.userId,
+          message: toolContext,
+          history: [
+            ...sessionHistory.slice(0, -1),
+            { role: 'user' as const, content: text },
+            { role: 'assistant' as const, content: llmResult.text || '[utilisation outil]' },
+          ],
+          memories,
+        })) {
+          if (request.cancelled) return;
+          fullText += token;
+          sentenceBuffer += token;
 
-      for await (const token of this.llm.chatStream({
-        userId: request.userId,
-        message: streamMessage,
-        history: streamHistory,
-        memories,
-      })) {
-        if (request.cancelled) return;
-        fullText += token;
-        sentenceBuffer += token;
-
-        // Check for complete sentence (40+ chars ending with punctuation)
-        const sentenceMatch = sentenceBuffer.match(/^(.{40,}?[.!?:,]\s*)/);
-        if (sentenceMatch) {
-          const sentence = sentenceMatch[1].trim();
-          sentenceBuffer = sentenceBuffer.slice(sentenceMatch[0].length);
-
-          const chunkId = `${request.id}-tts-${ttsChunkIndex++}`;
-          const ttsResult = await this.synthesize(chunkId, sentence);
-          this.sendEvent(socket, {
-            type: 'tts_audio',
-            audio: ttsResult.audio_base64,
-            requestId: request.id,
-          });
-          if (!firstAudioSent) {
-            this.setState(socket, request, RequestState.STREAMING_AUDIO);
-            firstAudioSent = true;
+          const sentenceMatch = sentenceBuffer.match(/^(.{40,}?[.!?:,]\s*)/);
+          if (sentenceMatch) {
+            const sentence = sentenceMatch[1].trim();
+            sentenceBuffer = sentenceBuffer.slice(sentenceMatch[0].length);
+            const chunkId = `${request.id}-tts-${ttsChunkIndex++}`;
+            const ttsResult = await this.synthesize(chunkId, sentence);
+            this.sendEvent(socket, { type: 'tts_audio', audio: ttsResult.audio_base64, requestId: request.id });
+            if (!firstAudioSent) { this.setState(socket, request, RequestState.STREAMING_AUDIO); firstAudioSent = true; }
           }
+        }
+      } else {
+        // No tool use — we already have the full text, just TTS it with streaming sentences
+        fullText = llmResult.text;
+        this.setState(socket, request, RequestState.SYNTHESIZING);
+
+        // Split into sentences for TTS
+        const sentences = fullText.match(/[^.!?:]+[.!?:]*/g) || [fullText];
+        const chunks: string[] = [];
+        let current = '';
+        for (const s of sentences) {
+          current += s;
+          if (current.trim().length >= 40) { chunks.push(current.trim()); current = ''; }
+        }
+        if (current.trim()) chunks.push(current.trim());
+
+        // Synthesize each chunk
+        for (let i = 0; i < chunks.length; i++) {
+          if (request.cancelled) return;
+          const chunkId = `${request.id}-tts-${ttsChunkIndex++}`;
+          const ttsResult = await this.synthesize(chunkId, chunks[i]);
+          this.sendEvent(socket, { type: 'tts_audio', audio: ttsResult.audio_base64, requestId: request.id });
+          if (!firstAudioSent) { this.setState(socket, request, RequestState.STREAMING_AUDIO); firstAudioSent = true; }
         }
       }
 
-      // Flush remaining text
+      // Flush remaining buffer
       if (sentenceBuffer.trim() && !request.cancelled) {
         const chunkId = `${request.id}-tts-${ttsChunkIndex}`;
         const ttsResult = await this.synthesize(chunkId, sentenceBuffer.trim());
-        this.sendEvent(socket, {
-          type: 'tts_audio',
-          audio: ttsResult.audio_base64,
-          requestId: request.id,
-        });
-        if (!firstAudioSent) {
-          this.setState(socket, request, RequestState.STREAMING_AUDIO);
-        }
+        this.sendEvent(socket, { type: 'tts_audio', audio: ttsResult.audio_base64, requestId: request.id });
       }
 
       sessionHistory.push({ role: 'assistant', content: fullText });
       if (sessionHistory.length > 20) sessionHistory.splice(0, sessionHistory.length - 20);
 
-      this.sendEvent(socket, {
-        type: 'text_response',
-        text: fullText,
-        requestId: request.id,
-        isPartial: false,
-      });
-
+      this.sendEvent(socket, { type: 'text_response', text: fullText, requestId: request.id, isPartial: false });
 
       this.setState(socket, request, RequestState.COMPLETED);
       this.cleanupRequest(request.id);
