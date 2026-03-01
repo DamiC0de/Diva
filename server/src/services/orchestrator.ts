@@ -463,7 +463,8 @@ export class Orchestrator {
       // Add user message to session history
       sessionHistory.push({ role: 'user', content: text });
 
-      let llmResult = await this.llm.chat({
+      // Check for tool use first (non-streaming)
+      const llmResult = await this.llm.chat({
         userId: request.userId,
         message: text,
         history: sessionHistory.slice(0, -1),
@@ -473,84 +474,90 @@ export class Orchestrator {
 
       if (request.cancelled) return;
 
-      // Handle tool use (single round)
+      // Handle tool use
       const urlsToOpen: string[] = [];
+      let streamHistory = sessionHistory.slice(0, -1);
+      let streamMessage = text;
+
       if (llmResult.toolUse && llmResult.toolUse.length > 0) {
         const toolResults = await this.executeTools(llmResult.toolUse);
-
-        // Collect URLs to send to client
         for (const tool of llmResult.toolUse) {
           const openUrl = (tool as unknown as Record<string, unknown>)._openUrl as string | undefined;
           if (openUrl) urlsToOpen.push(openUrl);
         }
-
-        // Send tool results back to Claude for final answer
-        llmResult = await this.llm.chat({
-          userId: request.userId,
-          message: toolResults.map(r => `[Résultat de ${r.name}]: ${r.result}`).join('\n'),
-          history: [
-            ...sessionHistory.slice(0, -1),
-            { role: 'user' as const, content: text },
-            { role: 'assistant' as const, content: llmResult.text || '[utilisation outil]' },
-          ],
-          memories,
-        });
-        if (request.cancelled) return;
-      }
-
-      // Send open_url events to client
-      for (const url of urlsToOpen) {
-        this.sendEvent(socket, { type: 'open_url', url, requestId: request.id } as ServerEvent);
-      }
-
-      // Add assistant response to session history
-      sessionHistory.push({ role: 'assistant', content: llmResult.text });
-
-      // Keep only last 20 messages
-      if (sessionHistory.length > 20) {
-        sessionHistory.splice(0, sessionHistory.length - 20);
-      }
-
-      this.sendEvent(socket, {
-        type: 'text_response',
-        text: llmResult.text,
-        requestId: request.id,
-        isPartial: false,
-      });
-
-      // 2. TTS — split by sentences for faster first-audio
-      if (llmResult.text.trim()) {
-        this.setState(socket, request, RequestState.SYNTHESIZING);
-
-        // Split into sentences
-        const sentences = llmResult.text.match(/[^.!?:]+[.!?:]*/g) || [llmResult.text];
-        const chunks: string[] = [];
-        let current = '';
-        for (const s of sentences) {
-          current += s;
-          // Batch ~50+ chars per TTS call for efficiency
-          if (current.trim().length >= 50) {
-            chunks.push(current.trim());
-            current = '';
-          }
+        for (const url of urlsToOpen) {
+          this.sendEvent(socket, { type: 'open_url', url, requestId: request.id } as ServerEvent);
         }
-        if (current.trim()) chunks.push(current.trim());
+        streamMessage = toolResults.map(r => `[Résultat de ${r.name}]: ${r.result}`).join('\n');
+        streamHistory = [
+          ...sessionHistory.slice(0, -1),
+          { role: 'user' as const, content: text },
+          { role: 'assistant' as const, content: llmResult.text || '[utilisation outil]' },
+        ];
+      }
 
-        // Synthesize and send each chunk
-        for (let i = 0; i < chunks.length; i++) {
-          if (request.cancelled) return;
-          const chunkId = `${request.id}-tts-${i}`;
-          const ttsResult = await this.synthesize(chunkId, chunks[i]);
+      // Stream LLM + TTS pipeline
+      let fullText = '';
+      let sentenceBuffer = '';
+      let ttsChunkIndex = 0;
+      let firstAudioSent = false;
+
+      this.setState(socket, request, RequestState.SYNTHESIZING);
+
+      for await (const token of this.llm.chatStream({
+        userId: request.userId,
+        message: streamMessage,
+        history: streamHistory,
+        memories,
+      })) {
+        if (request.cancelled) return;
+        fullText += token;
+        sentenceBuffer += token;
+
+        // Check for complete sentence (40+ chars ending with punctuation)
+        const sentenceMatch = sentenceBuffer.match(/^(.{40,}?[.!?:,]\s*)/);
+        if (sentenceMatch) {
+          const sentence = sentenceMatch[1].trim();
+          sentenceBuffer = sentenceBuffer.slice(sentenceMatch[0].length);
+
+          const chunkId = `${request.id}-tts-${ttsChunkIndex++}`;
+          const ttsResult = await this.synthesize(chunkId, sentence);
           this.sendEvent(socket, {
             type: 'tts_audio',
             audio: ttsResult.audio_base64,
             requestId: request.id,
           });
-          if (i === 0) {
+          if (!firstAudioSent) {
             this.setState(socket, request, RequestState.STREAMING_AUDIO);
+            firstAudioSent = true;
           }
         }
       }
+
+      // Flush remaining text
+      if (sentenceBuffer.trim() && !request.cancelled) {
+        const chunkId = `${request.id}-tts-${ttsChunkIndex}`;
+        const ttsResult = await this.synthesize(chunkId, sentenceBuffer.trim());
+        this.sendEvent(socket, {
+          type: 'tts_audio',
+          audio: ttsResult.audio_base64,
+          requestId: request.id,
+        });
+        if (!firstAudioSent) {
+          this.setState(socket, request, RequestState.STREAMING_AUDIO);
+        }
+      }
+
+      sessionHistory.push({ role: 'assistant', content: fullText });
+      if (sessionHistory.length > 20) sessionHistory.splice(0, sessionHistory.length - 20);
+
+      this.sendEvent(socket, {
+        type: 'text_response',
+        text: fullText,
+        requestId: request.id,
+        isPartial: false,
+      });
+
 
       this.setState(socket, request, RequestState.COMPLETED);
       this.cleanupRequest(request.id);
