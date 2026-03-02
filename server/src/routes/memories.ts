@@ -54,23 +54,6 @@ export async function memoriesRoutes(app: FastifyInstance) {
     return { deleted: true };
   });
 
-  // Delete ALL memories for user
-  app.delete('/api/v1/memories', {
-    preHandler: [app.authenticate],
-  }, async (request, reply) => {
-    const { error } = await db
-      .from('memories')
-      .delete()
-      .eq('user_id', request.userId);
-
-    if (error) {
-      app.log.error({ msg: 'Failed to delete all memories', error });
-      return reply.code(500).send({ error: 'Suppression échouée' });
-    }
-
-    return { deleted: true, message: 'Toutes les mémoires ont été supprimées' };
-  });
-
   // Update a memory
   app.patch<{ Params: MemoryParams; Body: MemoryPatchBody }>('/api/v1/memories/:id', {
     preHandler: [app.authenticate],
