@@ -224,6 +224,25 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
       required: ['query'],
     },
   },
+  {
+    name: 'delete_memory',
+    description: "Supprimer un souvenir/mémoire quand l'utilisateur dit 'oublie que...', 'efface ce que tu sais sur...'. Recherche la mémoire la plus pertinente et la supprime.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Ce que l\'utilisateur veut oublier (ex: "mon adresse", "Sophie")' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'list_memories',
+    description: "Lister ce que tu sais/retiens sur l'utilisateur. Utilise quand il demande 'qu\'est-ce que tu sais sur moi ?', 'qu\'est-ce que tu retiens ?'",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+    },
+  },
 ];
 
 // open_app: Claude builds the URL scheme directly, no mapping needed
@@ -264,6 +283,69 @@ async function executeWebSearch(query: string): Promise<string> {
     return `Résultats pour "${query}":\n` + results.join('\n\n');
   } catch (e) {
     return `Impossible de rechercher "${query}": ${String(e)}`;
+  }
+}
+
+async function executeDeleteMemory(userId: string, query: string, logger: any): Promise<string> {
+  try {
+    const db = getSupabase();
+    const { MemoryExtractor } = await import('./memoryExtractor.js');
+    const extractor = new MemoryExtractor(logger);
+    const embedding = await extractor.generateEmbedding(query);
+
+    const { data } = await db.rpc('match_memories', {
+      query_embedding: embedding,
+      match_threshold: 0.5,
+      match_count: 1,
+      p_user_id: userId,
+    });
+
+    if (!data?.length) return `Aucun souvenir trouvé correspondant à "${query}"`;
+
+    const memory = data[0];
+    await db.from('memories').delete().eq('id', memory.id);
+    return `Souvenir supprimé : "${memory.content}"`;
+  } catch (e) {
+    return `Erreur lors de la suppression : ${String(e)}`;
+  }
+}
+
+async function executeListMemories(userId: string): Promise<string> {
+  try {
+    const db = getSupabase();
+    const { data } = await db
+      .from('memories')
+      .select('category, content')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (!data?.length) return "Je n'ai encore rien retenu sur toi.";
+
+    const grouped: Record<string, string[]> = {};
+    for (const m of data) {
+      if (!grouped[m.category]) grouped[m.category] = [];
+      grouped[m.category].push(m.content);
+    }
+
+    const labels: Record<string, string> = {
+      preference: 'Préférences',
+      fact: 'Faits',
+      person: 'Personnes',
+      event: 'Événements',
+      reminder: 'Rappels',
+    };
+
+    let result = `Je retiens ${data.length} chose(s) sur toi :\n`;
+    for (const [cat, items] of Object.entries(grouped)) {
+      result += `\n${labels[cat] || cat} :\n`;
+      for (const item of items) {
+        result += `- ${item}\n`;
+      }
+    }
+    return result;
+  } catch (e) {
+    return `Erreur : ${String(e)}`;
   }
 }
 
@@ -539,7 +621,7 @@ export class Orchestrator {
       // Handle tool use (single round)
       const urlsToOpen: string[] = [];
       if (llmResult.toolUse && llmResult.toolUse.length > 0) {
-        const toolResults = await this.executeTools(llmResult.toolUse);
+        const toolResults = await this.executeTools(llmResult.toolUse, request.userId);
         for (const tool of llmResult.toolUse) {
           const openUrl = (tool as unknown as Record<string, unknown>)._openUrl as string | undefined;
           if (openUrl) urlsToOpen.push(openUrl);
@@ -680,7 +762,7 @@ export class Orchestrator {
   /**
    * Send text to TTS worker via Redis.
    */
-  private async executeTools(toolUses: import('@anthropic-ai/sdk').Anthropic.ToolUseBlock[]): Promise<{ name: string; result: string }[]> {
+  private async executeTools(toolUses: import('@anthropic-ai/sdk').Anthropic.ToolUseBlock[], userId?: string): Promise<{ name: string; result: string }[]> {
     const results: { name: string; result: string }[] = [];
     for (const tool of toolUses) {
       const input = tool.input as Record<string, string>;
@@ -707,6 +789,17 @@ export class Orchestrator {
             } catch (e) {
               results.push({ name: tool.name, result: `Erreur de recherche: ${String(e)}` });
             }
+            break;
+          }
+          case 'delete_memory': {
+            const delQuery = input.query as string;
+            const delResult = await executeDeleteMemory(userId ?? '', delQuery, this.logger);
+            results.push({ name: tool.name, result: delResult });
+            break;
+          }
+          case 'list_memories': {
+            const listResult = await executeListMemories(userId ?? '');
+            results.push({ name: tool.name, result: listResult });
             break;
           }
           default:

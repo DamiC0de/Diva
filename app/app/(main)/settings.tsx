@@ -9,6 +9,7 @@ import { SettingRow, SettingToggle, SettingSelect, SettingSectionHeader } from '
 import { useSettings } from '../../hooks/useSettings';
 import { useTheme } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
+import { api } from '../../lib/api';
 import { router } from 'expo-router';
 
 const TONE_OPTIONS = [
@@ -125,6 +126,36 @@ export default function SettingsScreen() {
 
         {/* Confidentialité */}
         <SettingSectionHeader title="Confidentialité" />
+        <SettingRow label="Effacer mes souvenirs" onPress={() => {
+          Alert.alert('Effacer les souvenirs', 'Diva oubliera tout ce qu\'elle sait sur toi.', [
+            { text: 'Annuler', style: 'cancel' },
+            { text: 'Effacer', style: 'destructive', onPress: async () => {
+              try {
+                await api.delete('/api/v1/memories');
+                Alert.alert('Fait', 'Tous les souvenirs ont été effacés.');
+              } catch { Alert.alert('Erreur', 'Impossible d\'effacer les souvenirs.'); }
+            }},
+          ]);
+        }} />
+        <SettingRow label="Voir mes souvenirs" onPress={async () => {
+          try {
+            const res = await api.get('/api/v1/memories');
+            const count = res.data?.memories?.length ?? 0;
+            const items = (res.data?.memories || []).slice(0, 10).map((m: any) => `[${m.category}] ${m.content}`).join('\n');
+            Alert.alert(`${count} souvenir(s)`, items || 'Aucun souvenir pour le moment');
+          } catch { Alert.alert('Erreur', 'Impossible de charger les souvenirs'); }
+        }} />
+        <SettingRow label="Effacer tous mes souvenirs" onPress={() => {
+          Alert.alert('Effacer les souvenirs', 'Diva oubliera tout ce qu\'elle sait sur toi. Continuer ?', [
+            { text: 'Annuler', style: 'cancel' },
+            { text: 'Tout effacer', style: 'destructive', onPress: async () => {
+              try {
+                await api.delete('/api/v1/memories');
+                Alert.alert('Fait', 'Tous les souvenirs ont été effacés');
+              } catch { Alert.alert('Erreur', 'Impossible d\'effacer les souvenirs'); }
+            }},
+          ]);
+        }} />
         <SettingRow label="Exporter mes données" onPress={() => Alert.alert('Export', 'Fonctionnalité à venir')} />
         <SettingRow label="Supprimer mon compte" onPress={handleDeleteAccount} />
 
