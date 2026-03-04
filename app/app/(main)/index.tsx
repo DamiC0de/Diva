@@ -107,9 +107,13 @@ export default function OrbScreen() {
         <Text style={[styles.hint, { color: theme.textMuted }]}>{STATE_HINTS[orbState]}</Text>
       ) : <View style={styles.hintSpacer} />}
 
-      {/* Transcript */}
+      {/* Transcript — US-027 */}
       <View style={styles.transcriptArea}>
-        <TranscriptOverlay text={transcript} role={transcriptRole} />
+        <TranscriptOverlay 
+          text={transcript} 
+          role={transcriptRole}
+          isStreaming={orbState === 'speaking' && transcriptRole === 'assistant'}
+        />
       </View>
 
       {/* Error overlay — US-006 */}
