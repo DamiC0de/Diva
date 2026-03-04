@@ -14,16 +14,31 @@
 Diva est une application mobile d'assistant vocal personnel qui :
 - Capture et traite la voix de l'utilisateur pour exécuter des commandes
 - Lit les notifications de l'appareil (messages, rappels)
+- **Accède aux messages de différentes plateformes** (SMS, WhatsApp, Messenger, Telegram, etc.) via les notifications ou APIs
 - Génère des réponses vocales via synthèse vocale (TTS)
 - Peut envoyer des messages au nom de l'utilisateur
+- **Peut résumer ou analyser des conversations** à la demande de l'utilisateur
 
 ### 1.2 Portée du traitement
 | Élément | Description |
 |---------|-------------|
-| Données concernées | Voix, transcriptions, notifications, contacts, calendrier |
+| Données concernées | Voix, transcriptions, notifications, contacts, calendrier, **messages (SMS, WhatsApp, Messenger, Telegram, etc.)** |
 | Volume estimé | 50-5000 utilisateurs (phase MVP à production) |
 | Fréquence | Continue (utilisation quotidienne) |
 | Durée conservation | Voir section 3.4 |
+
+### 1.2.1 Focus : Accès aux messages tiers
+L'accès aux messages implique le traitement de données de **personnes non-utilisatrices** (expéditeurs des messages). Ce point nécessite une attention particulière :
+
+| Plateforme | Méthode d'accès | Données accessibles |
+|------------|-----------------|---------------------|
+| SMS | Notifications iOS | Expéditeur, contenu, date |
+| WhatsApp | Notifications iOS | Expéditeur, contenu, date |
+| Messenger | Notifications iOS | Expéditeur, contenu, date |
+| Telegram | API Bot (optionnel) | Messages d'un chat spécifique |
+| iMessage | Notifications iOS | Expéditeur, contenu, date |
+
+**Note importante** : Les expéditeurs de ces messages sont des "personnes concernées" au sens du RGPD, même s'ils n'utilisent pas Diva.
 
 ### 1.3 Contexte du traitement
 - **Secteur** : Application grand public (B2C)
@@ -104,6 +119,29 @@ La voix constitue une donnée biométrique car elle permet l'identification uniq
   - Pas d'analyse vocale au-delà de la transcription
   - Pas de profilage émotionnel
   - Modèle STT ne conserve pas de métadonnées vocales
+
+#### Traitement des messages de tiers (SMS, WhatsApp, Messenger, etc.)
+- **Scénario** : L'utilisateur demande "Résume mes messages de Julie" — Julie n'a pas consenti
+- **Impact** : Traitement de données personnelles de tiers sans base légale directe
+- **Analyse juridique** :
+  - L'utilisateur est destinataire légitime des messages
+  - Le traitement est effectué à la demande de l'utilisateur (intérêt légitime)
+  - Le contenu reste sous le contrôle de l'utilisateur
+- **Mitigation** :
+  - **Traitement 100% local** pour les messages — jamais envoyés au cloud
+  - Pas de stockage des messages par Diva (lecture seule)
+  - Pas d'indexation ni de profilage des contacts
+  - L'utilisateur peut exclure des contacts du traitement
+  - Information claire dans la Privacy Policy sur ce traitement
+
+#### Contenu sensible dans les messages
+- **Scénario** : Un message contient des données de santé, orientation sexuelle, opinions politiques
+- **Impact** : Traitement de données Art. 9 sans consentement explicite du tiers
+- **Mitigation** :
+  - Traitement local uniquement (pas de transmission)
+  - Pas d'analyse sémantique profonde ni de catégorisation
+  - Pas de stockage du contenu des messages
+  - Option pour l'utilisateur de désactiver la lecture des messages
 
 ### 3.3 Matrice de risque finale
 

@@ -62,6 +62,40 @@
 
 ---
 
+## Traitement 3bis : Accès aux messages (SMS, WhatsApp, Messenger, etc.)
+
+| Champ | Valeur |
+|-------|--------|
+| **Nom du traitement** | Lecture et résumé des messages multi-plateformes |
+| **Finalité** | Permettre la lecture vocale et le résumé des conversations |
+| **Base légale** | Intérêt légitime de l'utilisateur (Art. 6.1.f) |
+| **Catégories de personnes** | Utilisateurs, **expéditeurs des messages (tiers)** |
+| **Catégories de données** | Contenu des messages, identité expéditeur, date/heure |
+| **Données sensibles** | Potentiellement (contenu peut inclure données Art. 9) |
+| **Source des données** | Notifications iOS, API Telegram (optionnel) |
+| **Destinataires** | **Aucun - traitement 100% local obligatoire** |
+| **Transferts hors UE** | **Non - interdit pour ce traitement** |
+| **Durée de conservation** | Non conservé (lecture en temps réel) |
+| **Mesures de sécurité** | Traitement local exclusif, pas de stockage, pas d'envoi cloud |
+
+### Justification intérêt légitime (balance des intérêts)
+
+| Critère | Analyse |
+|---------|---------|
+| **Intérêt de l'utilisateur** | Fort - accès facilité à ses propres messages |
+| **Impact sur les tiers** | Limité - messages déjà envoyés à l'utilisateur |
+| **Attentes raisonnables** | Les expéditeurs s'attendent à ce que le destinataire lise leurs messages |
+| **Mesures compensatoires** | Traitement local uniquement, pas de stockage, pas de profilage |
+
+### Garanties spécifiques
+
+1. ⚠️ **Jamais envoyé au cloud** — Le contenu des messages tiers reste sur l'appareil
+2. ⚠️ **Pas de stockage** — Lecture seule, pas de copie persistante
+3. ⚠️ **Pas de profilage** — Aucune analyse des contacts ou patterns de communication
+4. ⚠️ **Option de désactivation** — L'utilisateur peut désactiver cette fonctionnalité
+
+---
+
 ## Traitement 4 : Gestion des contacts
 
 | Champ | Valeur |

@@ -35,8 +35,19 @@ Ces données **ne quittent jamais votre téléphone** :
 | Votre voix | Transcription en texte | Non stockée (traitement en temps réel) |
 | Transcription | Exécution de vos commandes | Durée de la session |
 | Notifications | Lecture à votre demande | Non stockées par Diva |
+| **Messages (SMS, WhatsApp, Messenger, etc.)** | Lecture et résumé à votre demande | **Non stockés** (lecture temps réel) |
 | Contacts | Envoi de messages | Accès en lecture seule |
 | Calendrier | Création de rappels | Accès en lecture/écriture |
+
+### ⚠️ Note importante sur les messages
+
+Lorsque vous demandez à Diva de lire ou résumer vos messages, nous accédons au contenu de messages **envoyés par d'autres personnes**. Ces personnes n'ont pas directement consenti à ce traitement.
+
+**Nos garanties :**
+- 🔒 **100% local** — Le contenu des messages n'est JAMAIS envoyé à nos serveurs ou au cloud
+- 🚫 **Pas de stockage** — Diva lit les messages mais ne les conserve pas
+- 🚫 **Pas de profilage** — Nous n'analysons pas vos contacts ni vos habitudes de communication
+- ⚙️ **Désactivable** — Vous pouvez désactiver cette fonctionnalité dans les paramètres
 
 ### 3.2 Données envoyées au cloud (optionnel)
 

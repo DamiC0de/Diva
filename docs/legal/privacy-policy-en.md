@@ -35,8 +35,19 @@ This data **never leaves your phone**:
 | Your voice | Transcription to text | Not stored (real-time processing) |
 | Transcription | Executing your commands | Session duration |
 | Notifications | Reading at your request | Not stored by Diva |
+| **Messages (SMS, WhatsApp, Messenger, etc.)** | Reading and summarizing at your request | **Not stored** (real-time reading) |
 | Contacts | Sending messages | Read-only access |
 | Calendar | Creating reminders | Read/write access |
+
+### ⚠️ Important note about messages
+
+When you ask Diva to read or summarize your messages, we access content **sent by other people**. These people have not directly consented to this processing.
+
+**Our guarantees:**
+- 🔒 **100% local** — Message content is NEVER sent to our servers or the cloud
+- 🚫 **No storage** — Diva reads messages but does not store them
+- 🚫 **No profiling** — We do not analyze your contacts or communication patterns
+- ⚙️ **Can be disabled** — You can disable this feature in settings
 
 ### 3.2 Data sent to cloud (optional)
 
