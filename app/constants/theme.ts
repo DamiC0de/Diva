@@ -1,61 +1,96 @@
 /**
  * DIVA Design System — 2026
  * 
- * Palette inspirée du logo mascotte "Flamme Esprit"
- * Gradient: Cyan (#A8E0F0) → Bleu → Indigo (#5856D6) → Violet (#4A4B91)
- * Style: Compagnon IA chaleureux, premium, Apple-like
+ * Palette "Luminous Intelligence" from UX trends PDF
+ * - Dark-first with warm accents
+ * - Aligned with mascot logo gradient (cyan → indigo → violet)
+ * - Neo-minimalism: soft blacks, warm whites
  */
 import { useColorScheme } from 'react-native';
 
-// Shared accent palette — harmonized with mascot logo
-const accent = {
-  primary: '#5856D6',       // Indigo Apple — main brand color
-  primaryLight: '#7B78E8',  // Lighter indigo for dark mode
-  primarySoft: 'rgba(88, 86, 214, 0.12)',
-  teal: '#20808D',          // Teal accent (secondary)
-  tealSoft: 'rgba(32, 128, 141, 0.12)',
-  cyan: '#A8E0F0',          // Cyan from logo top
-  cyanSoft: 'rgba(168, 224, 240, 0.15)',
-  violet: '#4A4B91',        // Deep violet from logo base
-  success: '#34D399',
-  error: '#EF4444',
-  warning: '#FBBF24',
+// Brand colors — aligned with mascot logo
+const brand = {
+  // Logo gradient colors
+  cyan: '#7DD3E8',          // Top of logo flame
+  indigo: '#5856D6',        // Core brand color (Apple system indigo)
+  indigoLight: '#7B78E8',   // Lighter for dark mode
+  violet: '#4A4B91',        // Base of logo flame
+  
+  // Secondary accents
+  teal: '#20808D',
+  tealLight: '#2CB5C5',
+  peach: '#DE7356',         // Warm accent
+  peachLight: '#E8886B',
+};
+
+// Functional colors
+const functional = {
+  success: '#34C759',
+  successDark: '#30D158',
+  error: '#FF3B30',
+  errorDark: '#FF453A',
+  warning: '#FF9500',
+  warningDark: '#FF9F0A',
 };
 
 // Orb state colors — aligned with logo gradient
 const orbColors = {
-  orbIdle: '#5856D6',       // Indigo — primary, ready
-  orbListening: '#7DD3E8',  // Cyan — active, alert
-  orbProcessing: '#818CF8', // Light indigo — thinking
-  orbSpeaking: '#4A4B91',   // Deep violet — speaking
-  orbError: '#EF4444',      // Red — error state
+  orbIdle: brand.indigo,        // Ready state — brand indigo
+  orbListening: brand.cyan,     // Active listening — cyan (alert, receiving)
+  orbProcessing: brand.indigoLight, // Thinking — lighter indigo
+  orbSpeaking: brand.violet,    // Speaking — deep violet
+  orbError: functional.error,   // Error — red
+};
+
+// Voice animation gradient (for mesh/aurora effects)
+const voiceGradient = {
+  start: brand.cyan,
+  mid: brand.indigo,
+  end: brand.violet,
 };
 
 export const lightTheme = {
-  ...accent,
+  // Brand
+  ...brand,
+  primary: brand.indigo,
+  primaryLight: brand.indigoLight,
+  primarySoft: 'rgba(88, 86, 214, 0.12)',
+  tealSoft: 'rgba(32, 128, 141, 0.12)',
+  cyanSoft: 'rgba(125, 211, 232, 0.15)',
+  
+  // Orb
   ...orbColors,
-  // Backgrounds
-  bg: '#FAFAF9',            // Cloud Dancer warm white
-  bgSecondary: '#F5F3EF',   // Slightly warm
-  bgTertiary: '#EDEBE6',
-  background: '#FAFAF9',    // Alias for bg
+  voiceGradient,
+  
+  // Functional
+  success: functional.success,
+  error: functional.error,
+  warning: functional.warning,
+  
+  // Backgrounds — Luminous Intelligence light palette
+  bg: '#FAFAF8',              // Warm white (not pure)
+  bgSecondary: '#F2F0EB',
+  bgTertiary: '#E8E5DE',
+  bgGradientStart: '#FAFAF8',
+  bgGradientEnd: '#F2F0EB',
+  background: '#FAFAF8',
   
   // Surfaces
   card: '#FFFFFF',
-  cardBorder: '#E8E5DE',
+  cardBorder: 'rgba(0, 0, 0, 0.06)',
   cardElevated: '#FFFFFF',
   
   // Text
-  text: '#1A1A2E',
-  textSecondary: '#64748B',
-  textMuted: '#94A3B8',
+  text: '#1A1A1A',
+  textSecondary: '#6B6B6B',
+  textMuted: '#9A9A9A',
   textInverse: '#FFFFFF',
-  textLight: '#94A3B8',     // Alias for processing state
+  textLight: '#9A9A9A',
   
   // Input
   inputBg: '#FFFFFF',
   inputBorder: '#E2DFD8',
-  inputFocus: accent.primary,
+  inputFocus: brand.indigo,
   
   // Orb background
   orbBg: '#F0EDE6',
@@ -63,53 +98,74 @@ export const lightTheme = {
   // Misc
   white: '#FFFFFF',
   border: '#E8E5DE',
-  secondary: '#6366F1',     // Alias for primary
-  shadow: 'rgba(0, 0, 0, 0.06)',
+  secondary: brand.indigo,
+  shadow: 'rgba(0, 0, 0, 0.08)',
   overlay: 'rgba(0, 0, 0, 0.4)',
   divider: '#E8E5DE',
   statusBar: 'dark' as const,
 };
 
 export const darkTheme = {
-  ...accent,
-  ...orbColors,
-  // Backgrounds
-  bg: '#0C0C14',            // Deep space navy
-  bgSecondary: '#12121E',
-  bgTertiary: '#1A1A2A',
-  background: '#0C0C14',    // Alias for bg
+  // Brand
+  ...brand,
+  primary: brand.indigoLight,   // Lighter in dark mode
+  primaryLight: '#9B98F0',
+  primarySoft: 'rgba(123, 120, 232, 0.15)',
+  tealSoft: 'rgba(44, 181, 197, 0.15)',
+  cyanSoft: 'rgba(125, 211, 232, 0.12)',
+  
+  // Orb — slightly lighter in dark mode
+  orbIdle: brand.indigoLight,
+  orbListening: brand.cyan,
+  orbProcessing: '#9B98F0',
+  orbSpeaking: '#6B6BC4',
+  orbError: functional.errorDark,
+  voiceGradient,
+  
+  // Functional
+  success: functional.successDark,
+  error: functional.errorDark,
+  warning: functional.warningDark,
+  
+  // Backgrounds — Luminous Intelligence dark palette
+  bg: '#0D0D0D',              // Soft black (not pure)
+  bgSecondary: '#1A1A1E',
+  bgTertiary: '#2C2C30',
+  bgGradientStart: '#0D0D0D',
+  bgGradientEnd: '#1A1A2E',   // Hint of indigo
+  background: '#0D0D0D',
   
   // Surfaces
-  card: '#16162A',
-  cardBorder: '#252540',
-  cardElevated: '#1E1E36',
+  card: '#1C1C20',
+  cardBorder: 'rgba(255, 255, 255, 0.08)',
+  cardElevated: '#242428',
   
-  // Text
-  text: '#F1F0EE',          // Cloud Dancer tinted
-  textSecondary: '#9CA3AF',
-  textMuted: '#5B6078',
-  textInverse: '#0C0C14',
-  textLight: '#5B6078',     // Alias for processing state
+  // Text — warm white, never pure
+  text: '#F0EDE8',
+  textSecondary: '#A0A0A0',
+  textMuted: '#6B6B6B',
+  textInverse: '#0D0D0D',
+  textLight: '#6B6B6B',
   
   // Input
-  inputBg: '#16162A',
-  inputBorder: '#2A2A44',
-  inputFocus: accent.primaryLight,
+  inputBg: '#1C1C20',
+  inputBorder: '#2C2C30',
+  inputFocus: brand.indigoLight,
   
   // Orb background
   orbBg: '#1A1A2E',
   
   // Misc
   white: '#FFFFFF',
-  border: '#252540',
-  secondary: '#818CF8',     // Primary light for dark mode
-  shadow: 'rgba(0, 0, 0, 0.3)',
+  border: '#2C2C30',
+  secondary: brand.indigoLight,
+  shadow: 'rgba(0, 0, 0, 0.4)',
   overlay: 'rgba(0, 0, 0, 0.6)',
-  divider: '#252540',
+  divider: '#2C2C30',
   statusBar: 'light' as const,
 };
 
-// Define the base theme type with statusBar as a union to allow both values
+// Type definition
 export type Theme = Omit<typeof lightTheme, 'statusBar'> & {
   statusBar: 'dark' | 'light';
 };
@@ -119,6 +175,6 @@ export function useTheme(): Theme {
   return scheme === 'dark' ? darkTheme : lightTheme;
 }
 
-// Keep backward compat
+// Backward compat exports
 export const Colors = lightTheme;
 export const colors = Colors;
