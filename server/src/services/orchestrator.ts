@@ -433,6 +433,28 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
     },
   },
   {
+    name: 'create_reminder',
+    description: "Créer un rappel natif sur l'iPhone/Android de l'utilisateur. Le rappel apparaît dans l'app Rappels iOS ou le calendrier Android avec une notification. Utilise quand l'utilisateur dit 'rappelle-moi de X dans Y', 'rappelle-moi à 15h', 'rappelle-moi dans 10 minutes'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string',
+          description: "Titre du rappel (ce dont l'utilisateur veut être rappelé)",
+        },
+        delay_minutes: {
+          type: 'number',
+          description: "Dans combien de minutes le rappel doit sonner",
+        },
+        notes: {
+          type: 'string',
+          description: "Notes supplémentaires pour le rappel (optionnel)",
+        },
+      },
+      required: ['title', 'delay_minutes'],
+    },
+  },
+  {
     name: 'open_conversation',
     description: "Ouvrir une conversation avec un contact sur une app de messagerie (WhatsApp, iMessage, Messenger). Utilise quand l'utilisateur dit 'ouvre WhatsApp avec Julie', 'écris à Maman sur iMessage', 'conversation avec Pierre'. Le client résoudra le nom du contact vers son numéro de téléphone.",
     input_schema: {
@@ -1376,6 +1398,22 @@ export class Orchestrator {
             results.push({ name: tool.name, result: cancelResult });
             break;
           }
+          case 'create_reminder': {
+            // US-036: Create native iOS/Android reminder
+            if (!socket) {
+              results.push({ name: tool.name, result: 'WebSocket non disponible.' });
+              break;
+            }
+            const reminderParams = input as unknown as { title: string; delay_minutes: number; notes?: string };
+            const reminderResult = await this.requestCreateReminderFromClient(
+              socket,
+              reminderParams.title,
+              reminderParams.delay_minutes,
+              reminderParams.notes
+            );
+            results.push({ name: tool.name, result: reminderResult });
+            break;
+          }
           case 'open_conversation': {
             // US-021: Open conversation with contact on messaging app
             if (!socket) {
@@ -2135,6 +2173,48 @@ export class Orchestrator {
             }
 
             resolve(msg.message || "Timer annulé.");
+          }
+        } catch { /* ignore */ }
+      };
+
+      socket.on('message', handler);
+    });
+  }
+
+  /**
+   * US-036: Request to create a native reminder on client device
+   */
+  private async requestCreateReminderFromClient(
+    socket: import('ws').WebSocket,
+    title: string,
+    delayMinutes: number,
+    notes?: string,
+  ): Promise<string> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve("Le téléphone n'a pas répondu.");
+      }, 8000);
+
+      this.sendEvent(socket, {
+        type: 'request_create_reminder',
+        title,
+        delay_minutes: delayMinutes,
+        notes,
+      } as any);
+
+      const handler = (raw: Buffer) => {
+        try {
+          const msg = JSON.parse(raw.toString());
+          if (msg.type === 'create_reminder_response') {
+            clearTimeout(timeout);
+            socket.removeListener('message', handler);
+
+            if (msg.error) {
+              resolve(`Erreur rappel : ${msg.error}`);
+              return;
+            }
+
+            resolve(msg.message || `Rappel créé pour dans ${delayMinutes} minutes.`);
           }
         } catch { /* ignore */ }
       };

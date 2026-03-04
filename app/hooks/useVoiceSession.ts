@@ -18,6 +18,7 @@ import { openConversationWithFallback, type MessagingApp } from '../lib/conversa
 import { ERROR_MESSAGES, type ErrorMessage } from '../constants/errors';
 import { getOfflineResponse, OFFLINE_DEFAULT_MESSAGE } from '../lib/offlineResponses';
 import { useTimers } from '../lib/timerService';
+import { createReminderWithDelay } from '../lib/reminders';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://72.60.155.227:3001';
 const WS_URL = API_URL.replace('http', 'ws');
@@ -600,6 +601,50 @@ export function useVoiceSession({
                   if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({
                       type: 'cancel_timer_response',
+                      success: false,
+                      error: String(err),
+                    }));
+                  }
+                }
+              })();
+              break;
+
+            case 'request_create_reminder':
+              // US-036: Server asks to create a native iOS/Android reminder
+              (async () => {
+                try {
+                  const title = msg.title || 'Rappel Diva';
+                  const delayMinutes = msg.delay_minutes || msg.delayMinutes;
+                  const notes = msg.notes;
+                  
+                  if (!delayMinutes || delayMinutes <= 0) {
+                    if (ws.readyState === WebSocket.OPEN) {
+                      ws.send(JSON.stringify({
+                        type: 'create_reminder_response',
+                        success: false,
+                        error: 'Durée invalide',
+                      }));
+                    }
+                    return;
+                  }
+                  
+                  const result = await createReminderWithDelay(title, delayMinutes, notes);
+                  
+                  if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                      type: 'create_reminder_response',
+                      success: result.success,
+                      reminderId: result.reminderId,
+                      message: result.success
+                        ? `Rappel "${title}" créé pour dans ${delayMinutes} minute${delayMinutes > 1 ? 's' : ''}.`
+                        : undefined,
+                      error: result.error,
+                    }));
+                  }
+                } catch (err) {
+                  if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                      type: 'create_reminder_response',
                       success: false,
                       error: String(err),
                     }));
