@@ -31,13 +31,25 @@ export async function wsRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    // Extract userId (sub) from JWT payload
+    // Verify JWT and extract userId via Supabase Auth
     let userId: string;
     try {
-      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-      userId = payload.sub;
-    } catch {
-      userId = token; // fallback
+      const { getSupabase } = await import('../lib/supabase.js');
+      const supabase = getSupabase();
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+      
+      if (error || !user) {
+        app.log.warn({ msg: 'Invalid token', error: error?.message });
+        socket.send(JSON.stringify({ type: 'error', message: 'Invalid token' }));
+        socket.close(4001, 'Invalid token');
+        return;
+      }
+      userId = user.id;
+    } catch (err) {
+      app.log.error({ msg: 'Token verification failed', error: String(err) });
+      socket.send(JSON.stringify({ type: 'error', message: 'Authentication failed' }));
+      socket.close(4001, 'Authentication failed');
+      return;
     }
 
     app.log.info({ msg: 'WebSocket client connected', userId });

@@ -2374,13 +2374,21 @@ export class Orchestrator {
    * Refresh Gmail access token
    */
   private async refreshGmailToken(refreshToken: string): Promise<{ access_token: string; expires_in: number } | null> {
+    const clientId = process.env['GOOGLE_CLIENT_ID_WEB'];
+    const clientSecret = process.env['GOOGLE_CLIENT_SECRET'];
+    
+    if (!clientId || !clientSecret) {
+      this.logger.error({ msg: 'Missing GOOGLE_CLIENT_ID_WEB or GOOGLE_CLIENT_SECRET env vars' });
+      return null;
+    }
+    
     try {
       const res = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-          client_id: process.env['GOOGLE_CLIENT_ID_WEB'] || '794649959450-fc4ujikilh1eavfnbh3ov4aq3uphvq91.apps.googleusercontent.com',
-          client_secret: process.env['GOOGLE_CLIENT_SECRET'] || '',
+          client_id: clientId,
+          client_secret: clientSecret,
           refresh_token: refreshToken,
           grant_type: 'refresh_token',
         }),
