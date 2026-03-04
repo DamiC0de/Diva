@@ -401,6 +401,37 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
       required: ['phone_number'],
     },
   },
+  {
+    name: 'create_timer',
+    description: "Créer un timer/minuteur qui notifie l'utilisateur à la fin. Commandes: 'timer 5 minutes', 'minuteur de 30 secondes', 'chrono 1 heure'. Supporte un label optionnel (ex: 'pour les pâtes').",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        duration_seconds: {
+          type: 'number',
+          description: "Durée du timer en secondes",
+        },
+        label: {
+          type: 'string',
+          description: "Label optionnel pour identifier le timer (ex: 'pour les pâtes', 'pour le gâteau')",
+        },
+      },
+      required: ['duration_seconds'],
+    },
+  },
+  {
+    name: 'cancel_timer',
+    description: "Annuler un ou tous les timers en cours. Utilise quand l'utilisateur dit 'annule le timer', 'arrête le minuteur', 'stop chrono'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        cancel_all: {
+          type: 'boolean',
+          description: "Si true, annule tous les timers. Sinon annule le plus récent.",
+        },
+      },
+    },
+  },
 ];
 
 // open_app: Claude builds the URL scheme directly, no mapping needed
@@ -990,7 +1021,15 @@ export class Orchestrator {
           .map(s => s.trim())
           .filter(s => s.length > 0);
 
-        if (sentences.length <= 2) {
+        // Batch sentences to reduce network calls (edge-tts has ~1-2s latency per call)
+        // Group into chunks of ~3-4 sentences for better latency
+        const BATCH_SIZE = 3;
+        const batches: string[] = [];
+        for (let i = 0; i < sentences.length; i += BATCH_SIZE) {
+          batches.push(sentences.slice(i, i + BATCH_SIZE).join(' '));
+        }
+
+        if (batches.length <= 1) {
           // Short response: single TTS call (less overhead)
           const ttsResult = await this.synthesize(request.id, fullText.trim());
           this.sendEvent(socket, { type: 'tts_audio', audio: ttsResult.audio_base64, requestId: request.id });
@@ -999,14 +1038,12 @@ export class Orchestrator {
           // Start all TTS jobs in parallel, but send in order as they complete
           const pending = new Map<number, string | null>(); // index -> audio or null if pending
           let nextToSend = 0;
-          let completed = 0;
 
-          await Promise.all(sentences.map(async (sentence, i) => {
+          await Promise.all(batches.map(async (batch, i) => {
             pending.set(i, null); // Mark as pending
             try {
-              const result = await this.synthesize(`${request.id}-${i}`, sentence);
+              const result = await this.synthesize(`${request.id}-${i}`, batch);
               pending.set(i, result.audio_base64);
-              completed++;
               
               // Send all ready chunks in order
               while (pending.has(nextToSend) && pending.get(nextToSend) !== null) {
@@ -1017,9 +1054,8 @@ export class Orchestrator {
                 nextToSend++;
               }
             } catch (e) {
-              this.logger.error({ err: e, sentence, index: i }, 'TTS sentence failed');
+              this.logger.error({ err: e, batch, index: i }, 'TTS batch failed');
               pending.set(i, ''); // Empty string to not block
-              completed++;
             }
           }));
         }
@@ -1299,6 +1335,26 @@ export class Orchestrator {
             const callParams = input as unknown as { phone_number: string; contact_name?: string };
             const callResult = await this.requestCallFromClient(socket, callParams.phone_number, callParams.contact_name);
             results.push({ name: tool.name, result: callResult });
+            break;
+          }
+          case 'create_timer': {
+            if (!socket) {
+              results.push({ name: tool.name, result: 'WebSocket non disponible.' });
+              break;
+            }
+            const timerParams = input as unknown as { duration_seconds: number; label?: string };
+            const timerResult = await this.requestCreateTimerFromClient(socket, timerParams.duration_seconds, timerParams.label);
+            results.push({ name: tool.name, result: timerResult });
+            break;
+          }
+          case 'cancel_timer': {
+            if (!socket) {
+              results.push({ name: tool.name, result: 'WebSocket non disponible.' });
+              break;
+            }
+            const cancelParams = input as unknown as { cancel_all?: boolean };
+            const cancelResult = await this.requestCancelTimerFromClient(socket, cancelParams.cancel_all ?? false);
+            results.push({ name: tool.name, result: cancelResult });
             break;
           }
           default:
@@ -1973,6 +2029,84 @@ export class Orchestrator {
       this.logger.error({ err }, 'sendEmailViaGmail error');
       return `Erreur envoi email: ${String(err)}`;
     }
+  }
+
+  /**
+   * Request timer creation from client app
+   */
+  private async requestCreateTimerFromClient(
+    socket: import('ws').WebSocket,
+    durationSeconds: number,
+    label?: string,
+  ): Promise<string> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve("Le téléphone n'a pas répondu.");
+      }, 8000);
+
+      this.sendEvent(socket, {
+        type: 'request_create_timer',
+        duration_seconds: durationSeconds,
+        label,
+      } as any);
+
+      const handler = (raw: Buffer) => {
+        try {
+          const msg = JSON.parse(raw.toString());
+          if (msg.type === 'create_timer_response') {
+            clearTimeout(timeout);
+            socket.removeListener('message', handler);
+
+            if (msg.error) {
+              resolve(`Erreur timer : ${msg.error}`);
+              return;
+            }
+
+            resolve(msg.message || "Timer créé.");
+          }
+        } catch { /* ignore */ }
+      };
+
+      socket.on('message', handler);
+    });
+  }
+
+  /**
+   * Request timer cancellation from client app
+   */
+  private async requestCancelTimerFromClient(
+    socket: import('ws').WebSocket,
+    cancelAll: boolean,
+  ): Promise<string> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve("Le téléphone n'a pas répondu.");
+      }, 8000);
+
+      this.sendEvent(socket, {
+        type: 'request_cancel_timer',
+        cancel_all: cancelAll,
+      } as any);
+
+      const handler = (raw: Buffer) => {
+        try {
+          const msg = JSON.parse(raw.toString());
+          if (msg.type === 'cancel_timer_response') {
+            clearTimeout(timeout);
+            socket.removeListener('message', handler);
+
+            if (msg.error) {
+              resolve(`Erreur annulation : ${msg.error}`);
+              return;
+            }
+
+            resolve(msg.message || "Timer annulé.");
+          }
+        } catch { /* ignore */ }
+      };
+
+      socket.on('message', handler);
+    });
   }
 
   /**
