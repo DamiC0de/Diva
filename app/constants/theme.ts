@@ -37,6 +37,7 @@ export const lightTheme = {
   bg: '#FAFAF9',            // Cloud Dancer warm white
   bgSecondary: '#F5F3EF',   // Slightly warm
   bgTertiary: '#EDEBE6',
+  background: '#FAFAF9',    // Alias for bg
   
   // Surfaces
   card: '#FFFFFF',
@@ -48,6 +49,7 @@ export const lightTheme = {
   textSecondary: '#64748B',
   textMuted: '#94A3B8',
   textInverse: '#FFFFFF',
+  textLight: '#94A3B8',     // Alias for processing state
   
   // Input
   inputBg: '#FFFFFF',
@@ -58,6 +60,9 @@ export const lightTheme = {
   orbBg: '#F0EDE6',
   
   // Misc
+  white: '#FFFFFF',
+  border: '#E8E5DE',
+  secondary: '#6366F1',     // Alias for primary
   shadow: 'rgba(0, 0, 0, 0.06)',
   overlay: 'rgba(0, 0, 0, 0.4)',
   divider: '#E8E5DE',
@@ -71,6 +76,7 @@ export const darkTheme = {
   bg: '#0C0C14',            // Deep space navy
   bgSecondary: '#12121E',
   bgTertiary: '#1A1A2A',
+  background: '#0C0C14',    // Alias for bg
   
   // Surfaces
   card: '#16162A',
@@ -82,6 +88,7 @@ export const darkTheme = {
   textSecondary: '#9CA3AF',
   textMuted: '#5B6078',
   textInverse: '#0C0C14',
+  textLight: '#5B6078',     // Alias for processing state
   
   // Input
   inputBg: '#16162A',
@@ -92,13 +99,19 @@ export const darkTheme = {
   orbBg: '#1A1A2E',
   
   // Misc
+  white: '#FFFFFF',
+  border: '#252540',
+  secondary: '#818CF8',     // Primary light for dark mode
   shadow: 'rgba(0, 0, 0, 0.3)',
   overlay: 'rgba(0, 0, 0, 0.6)',
   divider: '#252540',
   statusBar: 'light' as const,
 };
 
-export type Theme = typeof lightTheme;
+// Define the base theme type with statusBar as a union to allow both values
+export type Theme = Omit<typeof lightTheme, 'statusBar'> & {
+  statusBar: 'dark' | 'light';
+};
 
 export function useTheme(): Theme {
   const scheme = useColorScheme();

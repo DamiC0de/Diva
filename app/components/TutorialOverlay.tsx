@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   suggestionsCard: { backgroundColor: '#fff', borderRadius: 20, padding: 28, marginHorizontal: 24, alignItems: 'center' },
   suggestTitle: { fontSize: 24, fontWeight: '700', marginBottom: 8 },
   suggestSubtitle: { fontSize: 15, color: '#666', marginBottom: 16 },
-  suggestionChip: { backgroundColor: colors.background, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, width: '100%', marginBottom: 8 },
+  suggestionChip: { backgroundColor: '#FAFAF9', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, width: '100%', marginBottom: 8 },
   suggestionText: { fontSize: 15, color: '#1a1a1a' },
   doneBtn: { backgroundColor: colors.primary, paddingVertical: 14, paddingHorizontal: 32, borderRadius: 12, marginTop: 12 },
   doneBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },

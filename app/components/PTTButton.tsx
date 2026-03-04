@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Text } from './ui';
-import { Colors } from '../constants/colors';
+import { useTheme } from '../constants/theme';
 
 type PTTState = 'idle' | 'recording' | 'processing';
 
@@ -18,6 +18,7 @@ interface PTTButtonProps {
 }
 
 export function PTTButton({ state, onPressIn, onPressOut }: PTTButtonProps) {
+  const theme = useTheme();
   const scaleAnim = React.useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -39,9 +40,9 @@ export function PTTButton({ state, onPressIn, onPressOut }: PTTButtonProps) {
   };
 
   const buttonColor =
-    state === 'recording' ? Colors.error :
-    state === 'processing' ? Colors.textLight :
-    Colors.primary;
+    state === 'recording' ? theme.error :
+    state === 'processing' ? theme.textLight :
+    theme.primary;
 
   const label =
     state === 'recording' ? '🎙️ Écoute...' :
@@ -57,7 +58,7 @@ export function PTTButton({ state, onPressIn, onPressOut }: PTTButtonProps) {
           disabled={state === 'processing'}
           style={[styles.button, { backgroundColor: buttonColor }]}
         >
-          <Text variant="subheading" color={Colors.white}>
+          <Text variant="subheading" color={theme.white}>
             {label}
           </Text>
         </Pressable>

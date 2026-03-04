@@ -23,6 +23,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -151,7 +153,7 @@ export function useTimers() {
 
   // Listen for notification interactions
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response: Notifications.NotificationResponse) => {
       const timerId = response.notification.request.content.data?.timerId as string;
       if (timerId) {
         // Timer notification was interacted with - remove it from state

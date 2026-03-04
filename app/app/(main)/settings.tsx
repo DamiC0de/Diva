@@ -13,6 +13,24 @@ import { api, API_BASE_URL } from '../../lib/api';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 
+// API Response Types
+interface GmailStatusResponse {
+  email?: string;
+}
+
+interface TelegramStatusResponse {
+  connected?: boolean;
+}
+
+interface TelegramAuthResponse {
+  success?: boolean;
+  error?: string;
+}
+
+interface MemoriesResponse {
+  memories?: Array<{ category: string; content: string }>;
+}
+
 const TONE_OPTIONS = [
   { label: '😊 Amical', value: 'friendly' },
   { label: '👔 Pro', value: 'professional' },
@@ -46,7 +64,7 @@ export default function SettingsScreen() {
 
   const checkGmailStatus = async () => {
     try {
-      const res = await api.get('/api/v1/gmail/status');
+      const res = await api.get<GmailStatusResponse>('/api/v1/gmail/status');
       setGmailEmail(res.data?.email || null);
     } catch {
       setGmailEmail(null);
@@ -101,7 +119,7 @@ export default function SettingsScreen() {
 
   const checkTelegramStatus = async () => {
     try {
-      const res = await api.get('/api/v1/telegram/user/status');
+      const res = await api.get<TelegramStatusResponse>('/api/v1/telegram/user/status');
       setTelegramUsername(res.data?.connected ? 'Connecté' : null);
     } catch {
       setTelegramUsername(null);
@@ -117,11 +135,11 @@ export default function SettingsScreen() {
         { text: 'Annuler', style: 'cancel' },
         {
           text: 'Envoyer le code',
-          onPress: async (phoneNumber) => {
+          onPress: async (phoneNumber: string | undefined) => {
             if (!phoneNumber) return;
             
             try {
-              const res = await api.post('/api/v1/telegram/user/auth/start', { phoneNumber });
+              const res = await api.post<TelegramAuthResponse>('/api/v1/telegram/user/auth/start', { phoneNumber });
               if (res.data?.success) {
                 // Prompt for code
                 setTimeout(() => {
@@ -132,11 +150,11 @@ export default function SettingsScreen() {
                       { text: 'Annuler', style: 'cancel' },
                       {
                         text: 'Vérifier',
-                        onPress: async (code) => {
+                        onPress: async (code: string | undefined) => {
                           if (!code) return;
                           
                           try {
-                            const verifyRes = await api.post('/api/v1/telegram/user/auth/complete', {
+                            const verifyRes = await api.post<TelegramAuthResponse>('/api/v1/telegram/user/auth/complete', {
                               phoneNumber,
                               code,
                             });
@@ -150,8 +168,8 @@ export default function SettingsScreen() {
                                   { text: 'Annuler', style: 'cancel' },
                                   {
                                     text: 'Confirmer',
-                                    onPress: async (password) => {
-                                      const twoFaRes = await api.post('/api/v1/telegram/user/auth/complete', {
+                                    onPress: async (password: string | undefined) => {
+                                      const twoFaRes = await api.post<TelegramAuthResponse>('/api/v1/telegram/user/auth/complete', {
                                         phoneNumber,
                                         code,
                                         password,
@@ -325,9 +343,10 @@ export default function SettingsScreen() {
         }} />
         <SettingRow label="Voir mes souvenirs" onPress={async () => {
           try {
-            const res = await api.get('/api/v1/memories');
-            const count = res.data?.memories?.length ?? 0;
-            const items = (res.data?.memories || []).slice(0, 10).map((m: any) => `[${m.category}] ${m.content}`).join('\n');
+            const res = await api.get<MemoriesResponse>('/api/v1/memories');
+            const memories = res.data?.memories || [];
+            const count = memories.length;
+            const items = memories.slice(0, 10).map((m) => `[${m.category}] ${m.content}`).join('\n');
             Alert.alert(`${count} souvenir(s)`, items || 'Aucun souvenir pour le moment');
           } catch { Alert.alert('Erreur', 'Impossible de charger les souvenirs'); }
         }} />

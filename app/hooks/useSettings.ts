@@ -31,16 +31,20 @@ const DEFAULT_SETTINGS: UserSettings = {
 export function useSettings() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Load settings on mount
   useEffect(() => {
     loadSettings();
   }, []);
 
+  interface SettingsResponse {
+    settings?: Partial<UserSettings>;
+  }
+
   const loadSettings = async () => {
     try {
-      const res = await api.get('/api/v1/settings');
+      const res = await api.get<SettingsResponse>('/api/v1/settings');
       if (res.data?.settings) {
         setSettings({ ...DEFAULT_SETTINGS, ...res.data.settings });
       }

@@ -2,7 +2,7 @@
  * EL-014 — Reusable Settings Row Components (dark mode)
  */
 import React from 'react';
-import { View, Switch, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Switch, TouchableOpacity, StyleSheet, StyleProp, TextStyle } from 'react-native';
 import { Text } from './ui/Text';
 import { useTheme } from '../constants/theme';
 
@@ -16,12 +16,12 @@ interface SettingRowProps {
 export function SettingRow({ label, value, onPress, rightElement }: SettingRowProps) {
   const theme = useTheme();
   return (
-    <TouchableOpacity style={[styles.row, { backgroundColor: theme.card, borderBottomColor: theme.border }]} onPress={onPress} disabled={!onPress}>
-      <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
+    <TouchableOpacity style={[styles.row, { backgroundColor: theme.card, borderBottomColor: theme.cardBorder }]} onPress={onPress} disabled={!onPress}>
+      <Text style={{ ...styles.label, color: theme.text }}>{label}</Text>
       <View style={styles.right}>
-        {value && <Text style={[styles.value, { color: theme.textSecondary }]}>{value}</Text>}
+        {value && <Text style={{ ...styles.value, color: theme.textSecondary }}>{value}</Text>}
         {rightElement}
-        {onPress && <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>}
+        {onPress && <Text style={{ ...styles.chevron, color: theme.textMuted }}>›</Text>}
       </View>
     </TouchableOpacity>
   );
@@ -37,15 +37,15 @@ interface SettingToggleProps {
 export function SettingToggle({ label, description, value, onToggle }: SettingToggleProps) {
   const theme = useTheme();
   return (
-    <View style={[styles.row, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+    <View style={[styles.row, { backgroundColor: theme.card, borderBottomColor: theme.cardBorder }]}>
       <View style={styles.labelContainer}>
-        <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
-        {description && <Text style={[styles.description, { color: theme.textSecondary }]}>{description}</Text>}
+        <Text style={{ ...styles.label, color: theme.text }}>{label}</Text>
+        {description && <Text style={{ ...styles.description, color: theme.textSecondary }}>{description}</Text>}
       </View>
       <Switch
         value={value}
         onValueChange={onToggle}
-        trackColor={{ true: theme.primary, false: theme.border }}
+        trackColor={{ true: theme.primary, false: theme.cardBorder }}
         thumbColor="#fff"
       />
     </View>
@@ -62,8 +62,8 @@ interface SettingSelectProps {
 export function SettingSelect({ label, options, selected, onSelect }: SettingSelectProps) {
   const theme = useTheme();
   return (
-    <View style={[styles.selectContainer, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-      <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
+    <View style={[styles.selectContainer, { backgroundColor: theme.card, borderBottomColor: theme.cardBorder }]}>
+      <Text style={{ ...styles.label, color: theme.text }}>{label}</Text>
       <View style={styles.optionsRow}>
         {options.map(opt => (
           <TouchableOpacity
@@ -71,7 +71,11 @@ export function SettingSelect({ label, options, selected, onSelect }: SettingSel
             style={[styles.option, { backgroundColor: theme.inputBg }, selected === opt.value && { backgroundColor: theme.primary }]}
             onPress={() => onSelect(opt.value)}
           >
-            <Text style={[styles.optionText, { color: theme.textSecondary }, selected === opt.value && styles.optionTextSelected]}>
+            <Text style={{
+              ...styles.optionText,
+              color: theme.textSecondary,
+              ...(selected === opt.value ? styles.optionTextSelected : {}),
+            }}>
               {opt.label}
             </Text>
           </TouchableOpacity>
@@ -85,7 +89,7 @@ export function SettingSectionHeader({ title }: { title: string }) {
   const theme = useTheme();
   return (
     <View style={styles.sectionHeader}>
-      <Text style={[styles.sectionTitle, { color: theme.primary }]}>{title}</Text>
+      <Text style={{ ...styles.sectionTitle, color: theme.primary }}>{title}</Text>
     </View>
   );
 }
