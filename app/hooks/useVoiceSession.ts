@@ -6,6 +6,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Linking, Platform } from 'react-native';
 import { Audio } from 'expo-av';
+import * as Haptics from 'expo-haptics';
+import { isCancelCommand } from '../lib/cancelDetection';
 import type { OrbState } from '../components/Orb/OrbView';
 import { getNotifications } from '../modules/notification-reader/src';
 import { getEvents, formatEventsForContext, createEvent } from '../lib/calendar';
@@ -208,6 +210,35 @@ export function useVoiceSession({ token, isNetworkConnected = true }: VoiceSessi
 
             case 'transcription':
             case 'transcript':
+              // US-007: Check for cancel command before processing
+              if (isCancelCommand(msg.text)) {
+                // Cancel silently — no confirmation, just stop
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                autoListenRef.current = false;
+                stoppingRef.current = false;
+                audioQueueRef.current = [];
+                isPlayingRef.current = false;
+                
+                if (recordingRef.current) {
+                  recordingRef.current.stopAndUnloadAsync().catch(() => {});
+                  recordingRef.current = null;
+                }
+                if (soundRef.current) {
+                  soundRef.current.stopAsync().catch(() => {});
+                  soundRef.current.unloadAsync().catch(() => {});
+                  soundRef.current = null;
+                }
+                
+                setOrbState('idle');
+                setAudioLevel(0);
+                setTranscript(null);
+                
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: 'cancel' }));
+                }
+                return;
+              }
+              
               setTranscript(msg.text);
               setTranscriptRole('user');
               break;
@@ -875,23 +906,33 @@ export function useVoiceSession({ token, isNetworkConnected = true }: VoiceSessi
   }, [doStartListening]);
 
   const cancel = useCallback(() => {
+    // US-007: Haptic feedback for cancel
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
     autoListenRef.current = false;
     stoppingRef.current = false;
     audioQueueRef.current = [];
     isPlayingRef.current = false;
 
+    // Stop recording if active
     if (recordingRef.current) {
       recordingRef.current.stopAndUnloadAsync().catch(() => {});
       recordingRef.current = null;
     }
+    
+    // Stop audio playback if active
     if (soundRef.current) {
       soundRef.current.stopAsync().catch(() => {});
       soundRef.current.unloadAsync().catch(() => {});
       soundRef.current = null;
     }
+    
+    // Reset UI
     setOrbState('idle');
     setAudioLevel(0);
     setTranscript(null);
+    
+    // Cancel server-side processing
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'cancel' }));
     }
