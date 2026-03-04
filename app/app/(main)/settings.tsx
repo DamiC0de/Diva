@@ -1,35 +1,24 @@
 /**
- * EL-014 — Settings Screen (dark mode, Diva)
+ * DIVA Settings Screen — 2026 Design
+ * Modern, fast loading, aligned with design system
  */
-import React, { useState, useEffect } from 'react';
-import { ScrollView, Alert, Linking, StyleSheet } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { ScrollView, Alert, Linking, StyleSheet, View, RefreshControl } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { 
+  User, Mic, Bell, Shield, Link2, Info, LogOut, 
+  Smile, MessageSquare, Volume2, Brain, Trash2, Download, Mail, Send
+} from 'lucide-react-native';
 import { Screen } from '../../components/ui/Screen';
 import { Button } from '../../components/ui/Button';
-import { SettingRow, SettingToggle, SettingSelect, SettingSectionHeader } from '../../components/SettingRow';
+import { SettingRow, SettingToggle, SettingSelect, SettingSectionHeader, SettingGroup } from '../../components/SettingRow';
 import { useSettings } from '../../hooks/useSettings';
 import { useTheme } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { api, API_BASE_URL } from '../../lib/api';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-
-// API Response Types
-interface GmailStatusResponse {
-  email?: string;
-}
-
-interface TelegramStatusResponse {
-  connected?: boolean;
-}
-
-interface TelegramAuthResponse {
-  success?: boolean;
-  error?: string;
-}
-
-interface MemoriesResponse {
-  memories?: { category: string; content: string }[];
-}
 
 const TONE_OPTIONS = [
   { label: '😊 Amical', value: 'friendly' },
@@ -46,349 +35,298 @@ const VERBOSITY_OPTIONS = [
 const WAKE_WORD_OPTIONS = [
   { label: 'Manuel', value: 'manual' },
   { label: 'Intelligent', value: 'smart' },
-  { label: 'Toujours actif', value: 'always_on' },
+  { label: 'Toujours', value: 'always_on' },
 ];
 
 export default function SettingsScreen() {
   const theme = useTheme();
   const { settings, loading, updatePersonality, updateSetting } = useSettings();
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // Connection statuses - lazy loaded
   const [gmailEmail, setGmailEmail] = useState<string | null>(null);
-  // gmailLoading reserved for future loading state UI
-  const [_gmailLoading, setGmailLoading] = useState(false);
   const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
+  const [statusLoaded, setStatusLoaded] = useState(false);
 
-  // Check connection statuses on mount
-  useEffect(() => {
-    checkGmailStatus();
-    checkTelegramStatus();
-  }, []);
+  // Load connection statuses when screen is focused (not on mount)
+  useFocusEffect(
+    useCallback(() => {
+      if (!statusLoaded) {
+        loadConnectionStatuses();
+      }
+    }, [statusLoaded])
+  );
 
-  const checkGmailStatus = async () => {
+  const loadConnectionStatuses = async () => {
     try {
-      const res = await api.get<GmailStatusResponse>('/api/v1/gmail/status');
-      setGmailEmail(res.data?.email || null);
+      const [gmailRes, telegramRes] = await Promise.allSettled([
+        api.get<{ email?: string }>('/api/v1/gmail/status'),
+        api.get<{ username?: string }>('/api/v1/telegram/status'),
+      ]);
+      
+      if (gmailRes.status === 'fulfilled') {
+        setGmailEmail(gmailRes.value.data?.email || null);
+      }
+      if (telegramRes.status === 'fulfilled') {
+        setTelegramUsername(telegramRes.value.data?.username || null);
+      }
     } catch {
-      setGmailEmail(null);
+      // Silent fail
+    } finally {
+      setStatusLoaded(true);
     }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    setStatusLoaded(false);
+    await loadConnectionStatuses();
+    setRefreshing(false);
   };
 
   const handleGmailConnect = async () => {
-    setGmailLoading(true);
     try {
-      // Get current user ID
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        Alert.alert('Erreur', 'Tu dois être connecté');
+        Alert.alert('Erreur', 'Connecte-toi d\'abord');
         return;
       }
-
-      // Open browser for OAuth flow
       const authUrl = `${API_BASE_URL}/api/v1/gmail/auth?userId=${user.id}`;
-      const result = await WebBrowser.openBrowserAsync(authUrl);
-      
-      // After browser closes, check status
-      if (result.type === 'cancel' || result.type === 'dismiss') {
-        await checkGmailStatus();
-        if (gmailEmail) {
-          Alert.alert('Gmail connecté', `Connecté en tant que ${gmailEmail}`);
-        }
-      }
+      await WebBrowser.openBrowserAsync(authUrl);
+      loadConnectionStatuses();
     } catch (err) {
       Alert.alert('Erreur', String(err));
-    } finally {
-      setGmailLoading(false);
     }
   };
 
-  const handleGmailDisconnect = () => {
-    Alert.alert('Déconnecter Gmail', 'Diva ne pourra plus lire ni envoyer tes emails.', [
+  const handleGmailDisconnect = async () => {
+    Alert.alert('Déconnecter Gmail', 'Tu ne pourras plus envoyer d\'emails via Diva.', [
       { text: 'Annuler', style: 'cancel' },
-      {
-        text: 'Déconnecter',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.delete('/api/v1/gmail/disconnect');
-            setGmailEmail(null);
-          } catch (err) {
-            Alert.alert('Erreur', String(err));
-          }
-        },
-      },
+      { text: 'Déconnecter', style: 'destructive', onPress: async () => {
+        try {
+          await api.post('/api/v1/gmail/disconnect');
+          setGmailEmail(null);
+        } catch { Alert.alert('Erreur', 'Impossible de déconnecter Gmail'); }
+      }},
     ]);
   };
 
-  const checkTelegramStatus = async () => {
+  const handleTelegramConnect = async () => {
     try {
-      const res = await api.get<TelegramStatusResponse>('/api/v1/telegram/user/status');
-      setTelegramUsername(res.data?.connected ? 'Connecté' : null);
+      const res = await api.get<{ auth_url: string }>('/api/v1/telegram/auth');
+      if (res.data?.auth_url) {
+        Linking.openURL(res.data.auth_url);
+      }
     } catch {
-      setTelegramUsername(null);
+      Alert.alert('Erreur', 'Impossible d\'initier la connexion Telegram');
     }
   };
 
-  const handleTelegramConnect = async () => {
-    // Prompt for phone number
-    Alert.prompt(
-      'Connecter Telegram',
-      'Entre ton numéro de téléphone (format international, ex: +33612345678)',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Envoyer le code',
-          onPress: async (phoneNumber: string | undefined) => {
-            if (!phoneNumber) return;
-            
-            try {
-              const res = await api.post<TelegramAuthResponse>('/api/v1/telegram/user/auth/start', { phoneNumber });
-              if (res.data?.success) {
-                // Prompt for code
-                setTimeout(() => {
-                  Alert.prompt(
-                    'Code de vérification',
-                    'Entre le code reçu sur Telegram',
-                    [
-                      { text: 'Annuler', style: 'cancel' },
-                      {
-                        text: 'Vérifier',
-                        onPress: async (code: string | undefined) => {
-                          if (!code) return;
-                          
-                          try {
-                            const verifyRes = await api.post<TelegramAuthResponse>('/api/v1/telegram/user/auth/complete', {
-                              phoneNumber,
-                              code,
-                            });
-                            
-                            if (verifyRes.data?.error === '2FA_REQUIRED') {
-                              // Handle 2FA
-                              Alert.prompt(
-                                'Authentification 2FA',
-                                'Entre ton mot de passe Telegram',
-                                [
-                                  { text: 'Annuler', style: 'cancel' },
-                                  {
-                                    text: 'Confirmer',
-                                    onPress: async (password: string | undefined) => {
-                                      const twoFaRes = await api.post<TelegramAuthResponse>('/api/v1/telegram/user/auth/complete', {
-                                        phoneNumber,
-                                        code,
-                                        password,
-                                      });
-                                      if (twoFaRes.data?.success) {
-                                        Alert.alert('Succès', 'Telegram connecté !');
-                                        checkTelegramStatus();
-                                      } else {
-                                        Alert.alert('Erreur', twoFaRes.data?.error || 'Échec de connexion');
-                                      }
-                                    },
-                                  },
-                                ],
-                                'secure-text'
-                              );
-                            } else if (verifyRes.data?.success) {
-                              Alert.alert('Succès', 'Telegram connecté !');
-                              checkTelegramStatus();
-                            } else {
-                              Alert.alert('Erreur', verifyRes.data?.error || 'Échec de vérification');
-                            }
-                          } catch (err) {
-                            Alert.alert('Erreur', String(err));
-                          }
-                        },
-                      },
-                    ],
-                    'plain-text'
-                  );
-                }, 500);
-              } else {
-                Alert.alert('Erreur', res.data?.error || 'Échec de l\'envoi du code');
-              }
-            } catch (err) {
-              Alert.alert('Erreur', String(err));
-            }
-          },
-        },
-      ],
-      'plain-text'
-    );
-  };
-
-  const handleTelegramDisconnect = () => {
-    Alert.alert('Déconnecter Telegram', 'Diva ne pourra plus lire tes messages Telegram.', [
+  const handleTelegramDisconnect = async () => {
+    Alert.alert('Déconnecter Telegram', 'Continuer ?', [
       { text: 'Annuler', style: 'cancel' },
-      {
-        text: 'Déconnecter',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.delete('/api/v1/telegram/user/disconnect');
-            setTelegramUsername(null);
-          } catch (err) {
-            Alert.alert('Erreur', String(err));
-          }
-        },
-      },
+      { text: 'Déconnecter', style: 'destructive', onPress: async () => {
+        try {
+          await api.post('/api/v1/telegram/disconnect');
+          setTelegramUsername(null);
+        } catch { Alert.alert('Erreur', 'Impossible de déconnecter'); }
+      }},
     ]);
   };
 
   const handleLogout = () => {
-    Alert.alert('Se déconnecter', 'Es-tu sûr(e) ?', [
+    Alert.alert('Déconnexion', 'Tu veux vraiment te déconnecter ?', [
       { text: 'Annuler', style: 'cancel' },
-      {
-        text: 'Déconnexion',
-        style: 'destructive',
-        onPress: async () => {
-          await supabase.auth.signOut();
-          router.replace('/(auth)/login');
-        },
-      },
+      { text: 'Déconnecter', style: 'destructive', onPress: async () => {
+        await supabase.auth.signOut();
+        router.replace('/(auth)/login');
+      }},
     ]);
   };
 
   const handleDeleteAccount = () => {
     Alert.alert(
-      'Supprimer mon compte',
+      'Supprimer le compte',
       'Cette action est irréversible. Toutes tes données seront supprimées.',
       [
         { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: () => {
-            Alert.alert('Confirmer', 'Dernière chance. Supprimer définitivement ?', [
-              { text: 'Non', style: 'cancel' },
-              {
-                text: 'Oui, supprimer',
-                style: 'destructive',
-                onPress: async () => {
-                  await supabase.auth.signOut();
-                  router.replace('/(auth)/login');
-                },
-              },
-            ]);
-          },
-        },
-      ],
+        { text: 'Supprimer', style: 'destructive', onPress: async () => {
+          try {
+            await api.delete('/api/v1/user/delete');
+            await supabase.auth.signOut();
+            router.replace('/(auth)/login');
+          } catch { Alert.alert('Erreur', 'Impossible de supprimer le compte'); }
+        }},
+      ]
     );
   };
 
-  if (loading) return <Screen><></></Screen>;
+  const handleClearMemories = () => {
+    Alert.alert('Effacer les souvenirs', 'Diva oubliera tout ce qu\'elle sait sur toi.', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Effacer', style: 'destructive', onPress: async () => {
+        try {
+          await api.delete('/api/v1/memories');
+          Alert.alert('✓', 'Souvenirs effacés');
+        } catch { Alert.alert('Erreur', 'Impossible d\'effacer'); }
+      }},
+    ]);
+  };
+
+  const iconColor = theme.textSecondary;
+  const iconSize = 20;
 
   return (
     <Screen>
-      <ScrollView style={[styles.container, { backgroundColor: theme.bg }]}>
+      <ScrollView 
+        style={[styles.container, { backgroundColor: theme.bg }]}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+        }
+      >
         {/* Personnalité */}
-        <SettingSectionHeader title="Personnalité de Diva" />
-        <SettingSelect
-          label="Ton"
-          options={TONE_OPTIONS}
-          selected={settings.personality.tone}
-          onSelect={(v) => updatePersonality('tone', v as 'friendly' | 'professional' | 'casual')}
+        <SettingSectionHeader 
+          title="Personnalité" 
+          icon={<Smile size={16} color={theme.primary} />} 
         />
-        <SettingSelect
-          label="Verbosité"
-          options={VERBOSITY_OPTIONS}
-          selected={settings.personality.verbosity}
-          onSelect={(v) => updatePersonality('verbosity', v as 'concise' | 'normal' | 'detailed')}
-        />
-        <SettingToggle
-          label="Tutoiement"
-          description="Diva te tutoie"
-          value={settings.personality.formality === 'tu'}
-          onToggle={(v) => updatePersonality('formality', v ? 'tu' : 'vous')}
-        />
-        <SettingToggle
-          label="Humour"
-          description="Diva peut faire de l'humour"
-          value={settings.personality.humor}
-          onToggle={(v) => updatePersonality('humor', v)}
-        />
+        <SettingGroup>
+          <SettingSelect
+            label="Ton"
+            options={TONE_OPTIONS}
+            selected={settings.personality.tone}
+            onSelect={(v) => updatePersonality('tone', v)}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+          <SettingSelect
+            label="Verbosité"
+            options={VERBOSITY_OPTIONS}
+            selected={settings.personality.verbosity}
+            onSelect={(v) => updatePersonality('verbosity', v)}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+          <SettingToggle
+            label="Humour"
+            description="Diva peut faire de l'humour"
+            value={settings.personality.humor}
+            onToggle={(v) => updatePersonality('humor', v)}
+          />
+        </SettingGroup>
 
-        {/* Voix & Audio */}
-        <SettingSectionHeader title="Voix & Audio" />
-        <SettingSelect
-          label="Mode wake word"
-          options={WAKE_WORD_OPTIONS}
-          selected={settings.voice.wake_word_mode}
-          onSelect={(v) => updateSetting('voice', { ...settings.voice, wake_word_mode: v as 'always_on' | 'smart' | 'manual' })}
+        {/* Voix */}
+        <SettingSectionHeader 
+          title="Voix & Audio" 
+          icon={<Mic size={16} color={theme.primary} />} 
         />
-        {/* US-005: Conversation mode toggle */}
-        <SettingToggle
-          label="Mode conversation"
-          description="Continue d'écouter après chaque réponse"
-          value={settings.voice.conversationMode}
-          onToggle={(v) => updateSetting('voice', { ...settings.voice, conversationMode: v })}
-        />
-
-        {/* Abonnement */}
-        <SettingSectionHeader title="Abonnement" />
-        <SettingRow label="Plan actuel" value="Free" />
-        <SettingRow
-          label="Gérer l'abonnement"
-          onPress={() => Linking.openURL('itms-apps://apps.apple.com/account/subscriptions')}
-        />
-
-        {/* Confidentialité */}
-        <SettingSectionHeader title="Confidentialité" />
-        <SettingRow label="Effacer mes souvenirs" onPress={() => {
-          Alert.alert('Effacer les souvenirs', 'Diva oubliera tout ce qu\'elle sait sur toi.', [
-            { text: 'Annuler', style: 'cancel' },
-            { text: 'Effacer', style: 'destructive', onPress: async () => {
-              try {
-                await api.delete('/api/v1/memories');
-                Alert.alert('Fait', 'Tous les souvenirs ont été effacés.');
-              } catch { Alert.alert('Erreur', 'Impossible d\'effacer les souvenirs.'); }
-            }},
-          ]);
-        }} />
-        <SettingRow label="Voir mes souvenirs" onPress={async () => {
-          try {
-            const res = await api.get<MemoriesResponse>('/api/v1/memories');
-            const memories = res.data?.memories || [];
-            const count = memories.length;
-            const items = memories.slice(0, 10).map((m) => `[${m.category}] ${m.content}`).join('\n');
-            Alert.alert(`${count} souvenir(s)`, items || 'Aucun souvenir pour le moment');
-          } catch { Alert.alert('Erreur', 'Impossible de charger les souvenirs'); }
-        }} />
-        <SettingRow label="Effacer tous mes souvenirs" onPress={() => {
-          Alert.alert('Effacer les souvenirs', 'Diva oubliera tout ce qu\'elle sait sur toi. Continuer ?', [
-            { text: 'Annuler', style: 'cancel' },
-            { text: 'Tout effacer', style: 'destructive', onPress: async () => {
-              try {
-                await api.delete('/api/v1/memories');
-                Alert.alert('Fait', 'Tous les souvenirs ont été effacés');
-              } catch { Alert.alert('Erreur', 'Impossible d\'effacer les souvenirs'); }
-            }},
-          ]);
-        }} />
-        <SettingRow label="Exporter mes données" onPress={() => Alert.alert('Export', 'Fonctionnalité à venir')} />
-        <SettingRow label="Supprimer mon compte" onPress={handleDeleteAccount} />
+        <SettingGroup>
+          <SettingSelect
+            label="Mode activation"
+            options={WAKE_WORD_OPTIONS}
+            selected={settings.voice.wake_word_mode}
+            onSelect={(v) => updateSetting('voice', { ...settings.voice, wake_word_mode: v as 'always_on' | 'smart' | 'manual' })}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+          <SettingToggle
+            label="Mode conversation"
+            description="Continue d'écouter après chaque réponse"
+            value={settings.voice.conversationMode}
+            onToggle={(v) => updateSetting('voice', { ...settings.voice, conversationMode: v })}
+          />
+        </SettingGroup>
 
         {/* Services connectés */}
-        <SettingSectionHeader title="Services connectés" />
-        <SettingRow
-          label="Gmail"
-          value={gmailEmail ? `✅ ${gmailEmail}` : '❌ Non connecté'}
-          onPress={gmailEmail ? handleGmailDisconnect : handleGmailConnect}
+        <SettingSectionHeader 
+          title="Services connectés" 
+          icon={<Link2 size={16} color={theme.primary} />} 
         />
-        <SettingRow
-          label="Telegram"
-          value={telegramUsername ? `✅ @${telegramUsername}` : '❌ Non connecté'}
-          onPress={telegramUsername ? handleTelegramDisconnect : handleTelegramConnect}
+        <SettingGroup>
+          <SettingRow
+            label="Gmail"
+            icon={<Mail size={iconSize} color={iconColor} />}
+            value={gmailEmail ? `✓ ${gmailEmail}` : 'Non connecté'}
+            onPress={gmailEmail ? handleGmailDisconnect : handleGmailConnect}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+          <SettingRow
+            label="Telegram"
+            icon={<Send size={iconSize} color={iconColor} />}
+            value={telegramUsername ? `✓ @${telegramUsername}` : 'Non connecté'}
+            onPress={telegramUsername ? handleTelegramDisconnect : handleTelegramConnect}
+          />
+        </SettingGroup>
+
+        {/* Confidentialité */}
+        <SettingSectionHeader 
+          title="Confidentialité" 
+          icon={<Shield size={16} color={theme.primary} />} 
         />
+        <SettingGroup>
+          <SettingRow
+            label="Voir mes souvenirs"
+            icon={<Brain size={iconSize} color={iconColor} />}
+            onPress={async () => {
+              try {
+                const res = await api.get<{ memories?: { category: string; content: string }[] }>('/api/v1/memories');
+                const memories = res.data?.memories || [];
+                const items = memories.slice(0, 5).map((m) => `• ${m.content}`).join('\n');
+                Alert.alert(`${memories.length} souvenir(s)`, items || 'Aucun souvenir');
+              } catch { Alert.alert('Erreur', 'Impossible de charger'); }
+            }}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+          <SettingRow
+            label="Effacer mes souvenirs"
+            icon={<Trash2 size={iconSize} color={theme.error} />}
+            onPress={handleClearMemories}
+            danger
+          />
+          <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+          <SettingRow
+            label="Exporter mes données"
+            icon={<Download size={iconSize} color={iconColor} />}
+            onPress={() => Alert.alert('Export', 'Fonctionnalité à venir')}
+          />
+        </SettingGroup>
 
         {/* À propos */}
-        <SettingSectionHeader title="À propos" />
-        <SettingRow label="Version" value="1.0.0 (MVP)" />
-        <SettingRow label="Contact support" onPress={() => Linking.openURL('mailto:contact@diva-ai.app')} />
+        <SettingSectionHeader 
+          title="À propos" 
+          icon={<Info size={16} color={theme.primary} />} 
+        />
+        <SettingGroup>
+          <SettingRow label="Version" value="1.0.0" />
+          <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+          <SettingRow 
+            label="Contacter le support" 
+            onPress={() => Linking.openURL('mailto:contact@diva-ai.app')} 
+          />
+        </SettingGroup>
+
+        {/* Compte */}
+        <SettingSectionHeader 
+          title="Compte" 
+          icon={<User size={16} color={theme.primary} />} 
+        />
+        <SettingGroup>
+          <SettingRow
+            label="Supprimer mon compte"
+            icon={<Trash2 size={iconSize} color={theme.error} />}
+            onPress={handleDeleteAccount}
+            danger
+          />
+        </SettingGroup>
 
         {/* Déconnexion */}
-        <Button
-          title="Se déconnecter"
-          onPress={handleLogout}
-          style={styles.logoutBtn}
-        />
+        <View style={styles.logoutContainer}>
+          <Button
+            title="Se déconnecter"
+            onPress={handleLogout}
+            style={[styles.logoutBtn, { backgroundColor: theme.bgSecondary }]}
+            textStyle={{ color: theme.error }}
+          />
+        </View>
+
+        <View style={styles.footer} />
       </ScrollView>
     </Screen>
   );
@@ -396,5 +334,9 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  logoutBtn: { margin: 24, marginBottom: 48 },
+  content: { paddingBottom: 40 },
+  divider: { height: 1, marginLeft: 16 },
+  logoutContainer: { marginTop: 32, paddingHorizontal: 16 },
+  logoutBtn: { borderRadius: 14 },
+  footer: { height: 40 },
 });
