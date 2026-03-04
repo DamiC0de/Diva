@@ -71,7 +71,13 @@ interface PingMessage {
   type: 'ping';
 }
 
-type ClientMessage = AudioChunkMessage | AudioEndMessage | TextMessage | CancelMessage | InterruptMessage | StartListeningMessage | StopListeningMessage | AudioMessage | PingMessage;
+interface KeywordCheckMessage {
+  type: 'keyword_check';
+  audio: string; // base64 audio
+  format: string;
+}
+
+type ClientMessage = AudioChunkMessage | AudioEndMessage | TextMessage | CancelMessage | InterruptMessage | StartListeningMessage | StopListeningMessage | AudioMessage | PingMessage | KeywordCheckMessage;
 
 // WebSocket message types (server → client)
 interface StateChangeEvent {
@@ -833,6 +839,10 @@ export class Orchestrator {
         // New voice-first: full audio blob as base64
         this.handleAudioMessage(socket, userId, (message as any).audio, (message as any).format);
         break;
+      case 'keyword_check':
+        // US-040: Fast transcription for keyword detection during TTS
+        this.handleKeywordCheck(socket, (message as KeywordCheckMessage).audio, (message as KeywordCheckMessage).format);
+        break;
     }
   }
 
@@ -869,6 +879,46 @@ export class Orchestrator {
       this.logger.error({ msg: 'Audio processing failed', error: (error as Error).message });
       this.sendEvent(socket, { type: 'error', message: (error as Error).message, requestId: request.id });
       this.sendEvent(socket, { type: 'state_change', state: RequestState.COMPLETED, requestId: request.id });
+    }
+  }
+
+  /**
+   * US-040: Fast keyword check for voice interrupts during TTS.
+   * Transcribes audio quickly and checks for interrupt keywords.
+   * Does NOT create a request or process with LLM.
+   */
+  private async handleKeywordCheck(
+    socket: WebSocket,
+    audioBase64: string,
+    _format: string,
+  ): Promise<void> {
+    // Keywords that trigger interrupt
+    const INTERRUPT_KEYWORDS = ['diva', 'stop', 'arrête', 'tais-toi'];
+    
+    try {
+      // Quick transcription via Groq (fastest path)
+      const sttResult = await this.transcribe('keyword-check', audioBase64);
+      const transcript = sttResult.text?.toLowerCase().trim() || '';
+      
+      // Check for interrupt keywords
+      const detectedKeyword = INTERRUPT_KEYWORDS.find(kw => transcript.includes(kw));
+      
+      this.sendEvent(socket, {
+        type: 'keyword_check_response',
+        detected: !!detectedKeyword,
+        keyword: detectedKeyword || null,
+        transcript,
+      } as any);
+    } catch (error) {
+      this.logger.warn({ msg: 'Keyword check transcription failed', error: (error as Error).message });
+      // On error, don't detect keyword — better to miss than false positive
+      this.sendEvent(socket, {
+        type: 'keyword_check_response',
+        detected: false,
+        keyword: null,
+        transcript: '',
+        error: (error as Error).message,
+      } as any);
     }
   }
 

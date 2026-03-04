@@ -8,6 +8,7 @@ import { Linking, Platform } from 'react-native';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { isCancelCommand } from '../lib/cancelDetection';
+import { containsInterruptKeyword, findInterruptKeyword } from '../lib/keywordDetector';
 import type { OrbState } from '../components/Orb/OrbView';
 import { getNotifications } from '../modules/notification-reader/src';
 import { getEvents, formatEventsForContext, createEvent } from '../lib/calendar';
@@ -28,6 +29,7 @@ interface VoiceSessionOptions {
   isNetworkConnected?: boolean;
   conversationMode?: boolean; // US-005: Hands-free continuous listening
   onConversationModeChange?: (enabled: boolean) => void; // US-005: Callback to toggle mode off
+  interruptOnKeyword?: boolean; // US-040: Keyword-based voice interrupt during TTS
 }
 
 interface VoiceSessionReturn {
@@ -111,6 +113,7 @@ export function useVoiceSession({
   isNetworkConnected = true,
   conversationMode = false,
   onConversationModeChange,
+  interruptOnKeyword = true, // US-040: Default enabled
 }: VoiceSessionOptions): VoiceSessionReturn {
   const [orbState, setOrbState] = useState<OrbState>('idle');
   const [transcript, setTranscript] = useState<string | null>(null);
@@ -136,6 +139,17 @@ export function useVoiceSession({
     conversationModeRef.current = conversationMode;
     onConversationModeChangeRef.current = onConversationModeChange;
   }, [conversationMode, onConversationModeChange]);
+
+  // US-040: Store interruptOnKeyword setting in ref
+  const interruptOnKeywordRef = useRef(interruptOnKeyword);
+  useEffect(() => {
+    interruptOnKeywordRef.current = interruptOnKeyword;
+  }, [interruptOnKeyword]);
+
+  // US-040: Keyword listening state during TTS playback
+  const keywordRecordingRef = useRef<Audio.Recording | null>(null);
+  const isKeywordListeningRef = useRef(false);
+  const keywordCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // US-005: Global silence timeout for conversation mode (30s)
   const conversationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -195,6 +209,128 @@ export function useVoiceSession({
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intentionalCloseRef = useRef(false);
   const reconnectDelayRef = useRef(1000); // Start with 1s, backoff on failures
+
+  // --- US-040: Keyword listening during TTS playback ---
+  // Note: keywordInterruptRef holds the interrupt callback, set after interrupt is defined
+  const keywordInterruptRef = useRef<(() => void) | null>(null);
+  
+  /**
+   * Stop keyword listening and cleanup recording.
+   */
+  const stopKeywordListening = useCallback(async () => {
+    if (!isKeywordListeningRef.current) return;
+    
+    console.log('[US-040] Stopping keyword listening');
+    isKeywordListeningRef.current = false;
+    
+    // Stop interval
+    if (keywordCheckIntervalRef.current) {
+      clearInterval(keywordCheckIntervalRef.current);
+      keywordCheckIntervalRef.current = null;
+    }
+    
+    // Stop recording
+    if (keywordRecordingRef.current) {
+      try {
+        await keywordRecordingRef.current.stopAndUnloadAsync();
+      } catch {}
+      keywordRecordingRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Start keyword listening - records 1.5s chunks and sends for transcription.
+   * Called when entering 'speaking' state. The interrupt is triggered via
+   * keyword_check_response in the WebSocket handler.
+   */
+  const startKeywordListening = useCallback(async () => {
+    // Skip if disabled, already active, or no WS
+    if (!interruptOnKeywordRef.current || isKeywordListeningRef.current) {
+      return;
+    }
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    
+    // On iOS, recording while playing is problematic - skip for now
+    if (Platform.OS === 'ios') {
+      console.log('[US-040] Skipping keyword listening on iOS (recording conflicts with playback)');
+      return;
+    }
+    
+    console.log('[US-040] Starting keyword listening during TTS');
+    isKeywordListeningRef.current = true;
+    
+    try {
+      // Ensure we can record
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('[US-040] No mic permission for keyword listening');
+        isKeywordListeningRef.current = false;
+        return;
+      }
+      
+      // Record and check every 1.5 seconds
+      const recordAndCheck = async () => {
+        if (!isKeywordListeningRef.current || !wsRef.current) {
+          return;
+        }
+        
+        try {
+          // Create a short recording
+          const { recording } = await Audio.Recording.createAsync(
+            Audio.RecordingOptionsPresets.HIGH_QUALITY
+          );
+          keywordRecordingRef.current = recording;
+          
+          // Record for 1.5 seconds
+          await new Promise(r => setTimeout(r, 1500));
+          
+          if (!isKeywordListeningRef.current) {
+            // Stopped while recording
+            try { await recording.stopAndUnloadAsync(); } catch {}
+            return;
+          }
+          
+          // Stop and get audio
+          await recording.stopAndUnloadAsync();
+          const uri = recording.getURI();
+          keywordRecordingRef.current = null;
+          
+          if (!uri || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+            return;
+          }
+          
+          // Convert to base64 and send for keyword check
+          const response = await fetch(uri);
+          const blob = await response.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            if (!isKeywordListeningRef.current || !wsRef.current) return;
+            const base64 = (reader.result as string).split(',')[1];
+            if (wsRef.current.readyState === WebSocket.OPEN) {
+              wsRef.current.send(JSON.stringify({
+                type: 'keyword_check',
+                audio: base64,
+                format: 'm4a',
+              }));
+            }
+          };
+          reader.readAsDataURL(blob);
+        } catch (err) {
+          console.log('[US-040] Keyword recording error:', err);
+        }
+      };
+      
+      // Start first check immediately, then every 1.8s (1.5s recording + 0.3s gap)
+      recordAndCheck();
+      keywordCheckIntervalRef.current = setInterval(recordAndCheck, 1800);
+      
+    } catch (err) {
+      console.log('[US-040] Failed to start keyword listening:', err);
+      isKeywordListeningRef.current = false;
+    }
+  }, [stopKeywordListening]);
 
   useEffect(() => {
     if (!token) return;
@@ -700,6 +836,15 @@ export function useVoiceSession({
               })();
               break;
 
+            case 'keyword_check_response':
+              // US-040: Handle keyword detection during TTS
+              if (msg.detected && keywordInterruptRef.current) {
+                console.log('[US-040] Keyword detected:', msg.keyword, 'Interrupting...');
+                stopKeywordListening();
+                keywordInterruptRef.current();
+              }
+              break;
+
             case 'error':
               setOrbState('error');
               // US-006: Use proper error message based on error type
@@ -786,6 +931,9 @@ export function useVoiceSession({
           return;
         }
         
+        // US-040: Stop keyword listening when TTS ends
+        stopKeywordListening();
+        
         // US-028: TTS finished — persist transcript for 2s then clear
         if (transcriptClearTimeoutRef.current) {
           clearTimeout(transcriptClearTimeoutRef.current);
@@ -838,15 +986,19 @@ export function useVoiceSession({
       isPlayingRef.current = false;
       playNextInQueue();
     }
-  }, []);
+  }, [stopKeywordListening]);
 
   const enqueueAudio = useCallback((base64: string) => {
     audioQueueRef.current.push(base64);
     setOrbState('speaking');
+    // US-040: Start keyword listening when TTS starts (only on first chunk)
+    if (!isPlayingRef.current && !isKeywordListeningRef.current) {
+      startKeywordListening();
+    }
     if (!isPlayingRef.current) {
       playNextInQueue();
     }
-  }, [playNextInQueue]);
+  }, [playNextInQueue, startKeywordListening]);
 
   const playAudio = async (_data: unknown) => {
     setOrbState('speaking');
@@ -1055,6 +1207,9 @@ export function useVoiceSession({
     // 1. Haptic feedback for immediate responsiveness
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
+    // US-040: Stop keyword listening immediately
+    stopKeywordListening();
+
     // 2. Stop audio playback immediately
     audioQueueRef.current = [];
     isPlayingRef.current = false;
@@ -1085,11 +1240,19 @@ export function useVoiceSession({
     // 5. Start recording for new input
     autoListenRef.current = true;
     doStartListening();
-  }, [doStartListening]);
+  }, [doStartListening, stopKeywordListening]);
+
+  // US-040: Keep keywordInterruptRef updated with latest interrupt function
+  useEffect(() => {
+    keywordInterruptRef.current = interrupt;
+  }, [interrupt]);
 
   const cancel = useCallback(() => {
     // US-007: Haptic feedback for cancel
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    // US-040: Stop keyword listening
+    stopKeywordListening();
     
     autoListenRef.current = false;
     stoppingRef.current = false;
@@ -1124,7 +1287,7 @@ export function useVoiceSession({
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'cancel' }));
     }
-  }, []);
+  }, [stopKeywordListening]);
 
   /** Handle offline query - show message and optionally provide local response */
   const handleOfflineQuery = useCallback(() => {

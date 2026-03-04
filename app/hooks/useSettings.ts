@@ -14,6 +14,7 @@ export interface UserSettings {
   voice: {
     wake_word_mode: 'always_on' | 'smart' | 'manual';
     conversationMode: boolean; // US-005: Hands-free continuous listening
+    interruptOnKeyword: boolean; // US-040: Keyword-based voice interrupt during TTS
   };
   onboarding_completed: boolean;
   tutorial_completed: boolean;
@@ -22,7 +23,7 @@ export interface UserSettings {
 
 const DEFAULT_SETTINGS: UserSettings = {
   personality: { tone: 'friendly', verbosity: 'normal', formality: 'tu', humor: true },
-  voice: { wake_word_mode: 'manual', conversationMode: false },
+  voice: { wake_word_mode: 'manual', conversationMode: false, interruptOnKeyword: true },
   onboarding_completed: false,
   tutorial_completed: false,
   timezone: 'Europe/Paris',
