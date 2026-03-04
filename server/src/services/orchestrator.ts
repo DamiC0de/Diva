@@ -1505,7 +1505,7 @@ export class Orchestrator {
     // Direct HTTP call to Piper TTS server (faster than Redis queue)
     try {
       const t0 = Date.now();
-      const res = await fetch('http://localhost:8880/v1/audio/speech', {
+      const res = await fetch('http://localhost:8881/v1/audio/speech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
