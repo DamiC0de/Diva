@@ -1,8 +1,9 @@
 # Data Protection Impact Assessment (DPIA)
 ## Application Diva — Assistant Vocal Privacy-First
 
-**Version**: 1.0
+**Version**: 1.1
 **Date**: 2026-03-04
+**Mise à jour**: Ajout screen recording, OCR cloud, app Mac compagnon
 **Responsable**: [À compléter]
 **DPO Contact**: [À compléter]
 
@@ -18,6 +19,9 @@ Diva est une application mobile d'assistant vocal personnel qui :
 - Génère des réponses vocales via synthèse vocale (TTS)
 - Peut envoyer des messages au nom de l'utilisateur
 - **Peut résumer ou analyser des conversations** à la demande de l'utilisateur
+- **(V1.1) Capture l'écran de l'appareil** (screen recording) pour lecture visuelle des apps
+- **(V1.1) Effectue de l'OCR sur GPU cloud** pour extraire le texte des captures
+- **(V1.1) Se synchronise avec une app Mac compagnon** pour automation complète
 
 ### 1.2 Portée du traitement
 | Élément | Description |
@@ -39,6 +43,51 @@ L'accès aux messages implique le traitement de données de **personnes non-util
 | iMessage | Notifications iOS | Expéditeur, contenu, date |
 
 **Note importante** : Les expéditeurs de ces messages sont des "personnes concernées" au sens du RGPD, même s'ils n'utilisent pas Diva.
+
+### 1.2.2 Focus : Screen Recording + OCR Cloud (V1.1)
+
+Pour contourner les limitations iOS sur l'accès aux apps, Diva peut capturer l'écran de l'appareil et effectuer une reconnaissance optique de caractères (OCR) sur le cloud.
+
+| Étape | Lieu | Données |
+|-------|------|---------|
+| Capture écran | Local (iPhone) | Image de l'écran |
+| Transmission | Chiffrée E2E | Frames compressées |
+| OCR | Cloud GPU (enclave) | Extraction texte |
+| Analyse | Cloud GPU (enclave) | Compréhension contexte |
+| Réponse | Chiffrée E2E | Texte uniquement |
+| **Stockage** | **AUCUN** | Frames détruites immédiatement |
+
+**Risques spécifiques :**
+- Capture de données sensibles affichées à l'écran (mots de passe, données bancaires)
+- Capture de données de tiers (conversations privées)
+- Transmission d'images vers le cloud
+
+**Mitigations :**
+- Consentement explicite et granulaire pour cette fonctionnalité
+- Indicateur visuel permanent pendant la capture
+- Traitement dans une enclave sécurisée (TEE)
+- Zéro persistence : frames détruites après traitement
+- Option de désactivation permanente
+
+### 1.2.3 Focus : App Mac Compagnon (V1.1)
+
+Pour atteindre 100% des cas d'usage, une application Mac compagnon peut :
+- Contrôler les applications macOS (Messages, WhatsApp Web, etc.)
+- Accéder à l'historique complet des conversations
+- Se synchroniser avec l'iPhone via réseau local WiFi
+
+| Donnée | Source | Traitement |
+|--------|--------|------------|
+| Messages iMessage | Messages.app DB | Local Mac |
+| WhatsApp | WhatsApp Web (automation) | Local Mac |
+| Messenger | Messenger Web (automation) | Local Mac |
+| Sync iPhone | WiFi local chiffré | Local network |
+
+**Garanties :**
+- Aucune donnée ne quitte le réseau local (Mac ↔ iPhone)
+- Pas de cloud pour cette fonctionnalité
+- Chiffrement du trafic local (TLS)
+- Mac doit être déverrouillé et autorisé par l'utilisateur
 
 ### 1.3 Contexte du traitement
 - **Secteur** : Application grand public (B2C)
@@ -62,6 +111,9 @@ L'accès aux messages implique le traitement de données de **personnes non-util
 | Lecture notifications | Consentement (6.1.a) | Permission iOS explicite |
 | Envoi messages | Consentement (6.1.a) | Confirmation avant envoi |
 | Traitement cloud | Consentement (6.1.a) | Opt-in séparé |
+| **Screen recording** | Consentement explicite (6.1.a) | Permission iOS + opt-in app |
+| **OCR cloud** | Consentement explicite (6.1.a) | Inclus dans consentement screen recording |
+| **Mac compagnon** | Consentement (6.1.a) | Installation + autorisation explicite |
 
 ### 2.2 Données biométriques (Art. 9)
 La voix constitue une donnée biométrique car elle permet l'identification unique.
@@ -75,6 +127,8 @@ La voix constitue une donnée biométrique car elle permet l'identification uniq
 | Transcription | Oui | Compréhension commande |
 | Notifications | Optionnel | Lecture sur demande |
 | Contacts | Optionnel | Envoi messages |
+| **Captures écran** | Optionnel (V1.1) | Lecture visuelle apps |
+| **Données Mac** | Optionnel (V1.1) | Historique conversations |
 | Localisation | Non collectée | - |
 | Historique navigation | Non collectée | - |
 
@@ -85,6 +139,8 @@ La voix constitue une donnée biométrique car elle permet l'identification uniq
 | Transcription (local) | Session uniquement | Effacé à la fermeture |
 | Contexte conversation | 24 heures | Continuité conversation |
 | Données envoyées cloud | 0 (éphémère) | Pas de persistence |
+| **Captures écran (cloud)** | 0 (éphémère) | Détruites après OCR |
+| **Données Mac (local)** | Non stockées par Diva | Lecture seule |
 | Compte utilisateur | Jusqu'à suppression | Fonctionnement service |
 
 ---
@@ -101,6 +157,9 @@ La voix constitue une donnée biométrique car elle permet l'identification uniq
 | Fuite données API tierce | Faible | Élevé | 🟡 Moyen |
 | Inférence données sensibles | Moyen | Moyen | 🟡 Moyen |
 | Perte de données | Très faible | Faible | 🟢 Faible |
+| **Capture écran données sensibles** | Moyen | Élevé | 🔴 Élevé |
+| **Fuite frames screen recording** | Faible | Très élevé | 🔴 Élevé |
+| **Accès non autorisé Mac** | Faible | Élevé | 🟡 Moyen |
 
 ### 3.2 Risques spécifiques voix
 
@@ -143,25 +202,82 @@ La voix constitue une donnée biométrique car elle permet l'identification uniq
   - Pas de stockage du contenu des messages
   - Option pour l'utilisateur de désactiver la lecture des messages
 
-### 3.3 Matrice de risque finale
+### 3.3 Risques spécifiques Screen Recording (V1.1)
+
+#### Capture de données sensibles à l'écran
+- **Scénario** : L'utilisateur active le screen recording alors que son app bancaire/médicale est ouverte
+- **Impact** : Capture et transmission de données hautement sensibles (mots de passe, soldes, diagnostics)
+- **Niveau de risque** : 🔴 ÉLEVÉ
+- **Mitigation** :
+  - Indicateur visuel PERMANENT et visible pendant la capture
+  - Consentement explicite avec avertissement sur les risques
+  - Option de pause instantanée (gesture ou commande vocale)
+  - Détection automatique d'apps sensibles (banques, santé) avec avertissement
+  - Traitement dans enclave sécurisée (TEE) — opérateur n'a pas accès aux frames
+  - **Zéro stockage** : frames détruites immédiatement après OCR
+
+#### Fuite des frames pendant transmission
+- **Scénario** : Interception des frames entre iPhone et cloud GPU
+- **Impact** : Exposition de tout le contenu visible à l'écran
+- **Niveau de risque** : 🔴 ÉLEVÉ
+- **Mitigation** :
+  - Chiffrement E2E (clé dérivée du device, jamais sur le serveur)
+  - Certificate pinning pour éviter MITM
+  - Frames compressées et fragmentées
+  - Pas de cache intermédiaire
+
+#### Capture de données de tiers (personnes à l'écran)
+- **Scénario** : Une conversation affichée contient des messages de personnes n'ayant pas consenti
+- **Impact** : Traitement de données personnelles de tiers
+- **Mitigation** :
+  - Même analyse que section 3.2 (messages tiers)
+  - L'utilisateur est responsable de ce qu'il affiche pendant le recording
+  - Information claire dans les conditions d'utilisation
+
+### 3.4 Risques spécifiques App Mac (V1.1)
+
+#### Accès non autorisé au Mac
+- **Scénario** : Un tiers accède au Mac et peut lire les messages via l'app compagnon
+- **Impact** : Accès à l'historique complet des conversations
+- **Mitigation** :
+  - L'app Mac nécessite authentification (Touch ID / mot de passe)
+  - Liaison avec iPhone par QR code (pairing sécurisé)
+  - Pas de données stockées par l'app Mac (lecture seule)
+  - Déconnexion automatique après inactivité
+
+#### Données restant sur le Mac
+- **Scénario** : Des données transitent par le Mac et pourraient être récupérées
+- **Impact** : Fuite de données via le Mac
+- **Mitigation** :
+  - Aucune persistence : données transitent en RAM uniquement
+  - Pas de logs, pas de cache
+  - Communication locale uniquement (pas d'internet)
+
+### 3.6 Matrice de risque finale
 
 ```
 Impact
    ^
+ 5 |  [R7,R8]
  4 |     [R3]      [R1,R2,R4]
- 3 |  [R5]
+ 3 |  [R5]    [R9]
  2 |        [R6]
  1 |
    +-------------------> Probabilité
      1    2    3    4
 
 R1: Interception transit
-R2: Accès non autorisé
+R2: Accès non autorisé serveur
 R3: Fuite API tierce
-R4: Capture tiers
+R4: Capture tiers (voix)
 R5: Inférence sensible
 R6: Perte données
+R7: Capture écran données sensibles (V1.1) ⚠️
+R8: Fuite frames screen recording (V1.1) ⚠️
+R9: Accès non autorisé Mac (V1.1)
 ```
+
+**⚠️ Note importante** : Les risques R7 et R8 (screen recording) ont un impact TRÈS ÉLEVÉ et nécessitent les mitigations les plus strictes. Le consentement utilisateur doit être particulièrement explicite pour cette fonctionnalité.
 
 ---
 
@@ -177,6 +293,12 @@ R6: Perte données
 | Authentification JWT | R2 | Tokens signés, expiration courte |
 | Pas de logs voix | R1, R4, R5 | Audio jamais persisté |
 | HTTPS pinning | R1 | Certificats épinglés |
+| **Enclave sécurisée (TEE)** | R7, R8 | OCR dans environnement isolé |
+| **Chiffrement E2E frames** | R8 | Clé device-only, jamais sur serveur |
+| **Zéro persistence frames** | R7, R8 | Destruction immédiate après OCR |
+| **Indicateur visuel recording** | R7 | Badge permanent à l'écran |
+| **Auth Mac biométrique** | R9 | Touch ID / mot de passe requis |
+| **Pairing sécurisé** | R9 | QR code + validation locale |
 
 ### 4.2 Mesures organisationnelles
 

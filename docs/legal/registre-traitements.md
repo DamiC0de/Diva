@@ -177,11 +177,80 @@
 
 ---
 
+---
+
+## Traitement 8 : Screen Recording + OCR Cloud (V1.1)
+
+| Champ | Valeur |
+|-------|--------|
+| **Nom du traitement** | Capture écran et reconnaissance optique |
+| **Finalité** | Lecture visuelle du contenu des applications iOS |
+| **Base légale** | Consentement explicite (Art. 6.1.a) |
+| **Catégories de personnes** | Utilisateurs, personnes affichées à l'écran |
+| **Catégories de données** | Captures d'écran, texte extrait par OCR |
+| **Données sensibles** | ⚠️ POTENTIELLEMENT TRÈS SENSIBLES (apps bancaires, santé, etc.) |
+| **Source des données** | Capture écran iOS (avec permission) |
+| **Destinataires** | Cloud GPU (enclave sécurisée) pour OCR |
+| **Transferts hors UE** | Possible (selon provider GPU) — SCCs requis |
+| **Durée de conservation** | **ZÉRO** — frames détruites immédiatement après OCR |
+| **Mesures de sécurité** | Chiffrement E2E, enclave TEE, indicateur visuel permanent |
+
+### ⚠️ Avertissement
+
+Ce traitement présente des risques ÉLEVÉS car il peut capturer :
+- Mots de passe visibles
+- Données bancaires
+- Informations médicales
+- Conversations privées de tiers
+
+Le consentement doit être :
+- Explicite et séparé des autres permissions
+- Accompagné d'un avertissement clair sur les risques
+- Révocable à tout moment
+
+---
+
+## Traitement 9 : App Mac Compagnon (V1.1)
+
+| Champ | Valeur |
+|-------|--------|
+| **Nom du traitement** | Synchronisation avec application Mac |
+| **Finalité** | Accès complet aux messages via automation macOS |
+| **Base légale** | Consentement (Art. 6.1.a) |
+| **Catégories de personnes** | Utilisateurs, contacts/expéditeurs des messages |
+| **Catégories de données** | Messages iMessage, WhatsApp Web, Messenger Web |
+| **Données sensibles** | Potentiellement (contenu des conversations) |
+| **Source des données** | Applications macOS (Messages.app, navigateur) |
+| **Destinataires** | **Aucun — traitement 100% local** |
+| **Transferts hors UE** | **Non** — réseau local uniquement |
+| **Durée de conservation** | Non conservé (lecture seule, transit RAM) |
+| **Mesures de sécurité** | Auth biométrique, pairing sécurisé, chiffrement local |
+
+### Garanties spécifiques
+
+1. ⚠️ **Aucune donnée ne quitte le réseau local** (Mac ↔ iPhone WiFi)
+2. ⚠️ **Pas de stockage** — Données transitent en RAM uniquement
+3. ⚠️ **Auth requise** — Touch ID ou mot de passe pour chaque session
+4. ⚠️ **Pairing sécurisé** — QR code + validation bidirectionnelle
+
+---
+
+## Sous-traitants
+
+| Sous-traitant | Traitement | Localisation | Garanties | DPA signé |
+|---------------|------------|--------------|-----------|-----------|
+| Anthropic | API LLM | USA | SCCs | ✅ Oui |
+| [Hébergeur] | Infrastructure | EU | RGPD natif | ✅ Oui |
+| **[GPU Provider]** | OCR Screen Recording | À définir | SCCs + TEE | ⏳ À signer |
+
+---
+
 ## Historique des modifications
 
 | Date | Version | Modification | Auteur |
 |------|---------|--------------|--------|
 | 2026-03-04 | 1.0 | Création initiale | Mary (Analyste BMAD) |
+| 2026-03-04 | 1.1 | Ajout Screen Recording, OCR, Mac Compagnon | Mary (Analyste BMAD) |
 
 ---
 
