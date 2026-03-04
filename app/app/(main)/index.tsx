@@ -65,11 +65,18 @@ export default function OrbScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.title, { color: theme.text }]}>diva</Text>
-        <Pressable onPress={() => router.push('/settings')} hitSlop={20}>
-          <View style={[styles.settingsBtn, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.settingsIcon, { color: theme.textSecondary }]}>⚙</Text>
-          </View>
-        </Pressable>
+        <View style={styles.headerButtons}>
+          <Pressable onPress={() => router.push('/history')} hitSlop={20}>
+            <View style={[styles.headerBtn, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+              <Text style={[styles.headerBtnIcon, { color: theme.textSecondary }]}>📜</Text>
+            </View>
+          </Pressable>
+          <Pressable onPress={() => router.push('/settings')} hitSlop={20}>
+            <View style={[styles.headerBtn, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+              <Text style={[styles.headerBtnIcon, { color: theme.textSecondary }]}>⚙</Text>
+            </View>
+          </Pressable>
+        </View>
       </View>
 
       {/* Offline badge - US-038 */}
@@ -142,7 +149,11 @@ const styles = StyleSheet.create({
     fontWeight: '200',
     letterSpacing: 6,
   },
-  settingsBtn: {
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerBtn: {
     width: 36,
     height: 36,
     borderRadius: 12,
@@ -150,7 +161,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  settingsIcon: { fontSize: 16 },
+  headerBtnIcon: { fontSize: 16 },
   offlineBadge: {
     position: 'absolute',
     top: 100,
