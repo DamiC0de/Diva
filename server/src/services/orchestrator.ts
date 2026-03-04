@@ -1052,7 +1052,10 @@ export class Orchestrator {
       const isTooShort = text.trim().split(/\s+/).length <= 3 && !text.includes('?');
       const isPersonal = /mon\s+(agenda|calendrier|planning|rdv|rendez|mail|message|notif)/i.test(text);
       const isActionRequest = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|met|mets)[\s-]/i.test(text.trim());
-      const skipSearch = isSmallTalk || isConfirmation || isTooShort || isPersonal || isActionRequest;
+      // Skip search for conversational/identity questions that don't need web search
+      const isConversational = /(tu m'entends|tu es l[àa]|tu fonctionnes|tu marches|allo|qui es[- ]tu|tu t'appelles|ton nom|tu fais quoi|tu sers [àa] quoi|qu'est[- ]ce que tu (es|fais|peux)|tu peux (faire|m'aider)|aide[- ]moi|raconte|blague|histoire|chante|parle[- ]moi de toi|pr[ée]sente[- ]toi)/i.test(text);
+      const isSimpleQuestion = text.trim().split(/\s+/).length <= 8 && /^(est[- ]ce que|tu |comment |pourquoi tu|qu'est)/i.test(text.trim());
+      const skipSearch = isSmallTalk || isConfirmation || isTooShort || isPersonal || isActionRequest || isConversational || isSimpleQuestion;
 
       let preSearchContext = '';
       if (!skipSearch) {
@@ -1125,9 +1128,9 @@ export class Orchestrator {
           .map(s => s.trim())
           .filter(s => s.length > 0);
 
-        // Batch sentences to reduce network calls (edge-tts has ~1-2s latency per call)
-        // Group into chunks of ~3-4 sentences for better latency
-        const BATCH_SIZE = 3;
+        // Stream each sentence immediately for fastest first-byte
+        // With local Piper TTS (22kHz), single sentences are fast enough
+        const BATCH_SIZE = 1;
         const batches: string[] = [];
         for (let i = 0; i < sentences.length; i += BATCH_SIZE) {
           batches.push(sentences.slice(i, i + BATCH_SIZE).join(' '));
