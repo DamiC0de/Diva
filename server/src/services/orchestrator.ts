@@ -16,7 +16,7 @@ import { MemoryRetriever } from './memoryRetriever.js';
 import { MemoryExtractor } from './memoryExtractor.js';
 import { sendNotificationToTelegram } from '../routes/telegram.js';
 import * as TelegramUser from './telegramUser.js';
-import { InboundMessageSchema, type InboundMessage } from '../schemas/ws-messages.js';
+import { InboundMessageSchema } from '../schemas/ws-messages.js';
 import { checkRateLimit, getRateLimitConfig } from '../lib/rateLimiter.js';
 
 // Request states
