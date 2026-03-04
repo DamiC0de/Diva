@@ -294,6 +294,13 @@ export default function SettingsScreen() {
           selected={settings.voice.wake_word_mode}
           onSelect={(v) => updateSetting('voice', { ...settings.voice, wake_word_mode: v as 'always_on' | 'smart' | 'manual' })}
         />
+        {/* US-005: Conversation mode toggle */}
+        <SettingToggle
+          label="Mode conversation"
+          description="Continue d'écouter après chaque réponse"
+          value={settings.voice.conversationMode}
+          onToggle={(v) => updateSetting('voice', { ...settings.voice, conversationMode: v })}
+        />
 
         {/* Abonnement */}
         <SettingSectionHeader title="Abonnement" />

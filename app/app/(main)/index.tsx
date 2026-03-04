@@ -11,6 +11,7 @@ import { TranscriptOverlay } from '../../components/TranscriptOverlay';
 import { ErrorOverlay } from '../../components/ErrorOverlay';
 import { useVoiceSession } from '../../hooks/useVoiceSession';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
+import { useSettings } from '../../hooks/useSettings';
 import { useTheme } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 
@@ -28,12 +29,18 @@ export default function OrbScreen() {
   const insets = useSafeAreaInsets();
   const [token, setToken] = useState<string | null>(null);
   const { isConnected: isNetworkConnected } = useNetworkStatus();
+  const { settings, updateSetting } = useSettings();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setToken(data.session?.access_token ?? null);
     });
   }, []);
+
+  // US-005: Callback to disable conversation mode (e.g., on "stop" command or timeout)
+  const handleConversationModeChange = (enabled: boolean) => {
+    updateSetting('voice', { ...settings.voice, conversationMode: enabled });
+  };
 
   const {
     orbState,
@@ -45,7 +52,13 @@ export default function OrbScreen() {
     isConnected: isWsConnected,
     error,
     clearError,
-  } = useVoiceSession({ token, isNetworkConnected });
+    isConversationActive, // US-005
+  } = useVoiceSession({ 
+    token, 
+    isNetworkConnected,
+    conversationMode: settings.voice.conversationMode,
+    onConversationModeChange: handleConversationModeChange,
+  });
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
@@ -63,6 +76,13 @@ export default function OrbScreen() {
       {!isNetworkConnected && (
         <View style={styles.offlineBadge}>
           <Text style={styles.offlineBadgeText}>📡 Hors ligne</Text>
+        </View>
+      )}
+
+      {/* Conversation mode badge - US-005 */}
+      {isConversationActive && isNetworkConnected && (
+        <View style={styles.conversationBadge}>
+          <Text style={styles.conversationBadgeText}>💬 Conversation</Text>
         </View>
       )}
 
@@ -138,6 +158,22 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   offlineBadgeText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // US-005: Conversation mode badge
+  conversationBadge: {
+    position: 'absolute',
+    top: 100,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(99, 102, 241, 0.9)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    zIndex: 10,
+  },
+  conversationBadgeText: {
     color: 'white',
     fontSize: 14,
     fontWeight: '600',

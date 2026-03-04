@@ -23,6 +23,8 @@ const WS_URL = API_URL.replace('http', 'ws');
 interface VoiceSessionOptions {
   token: string | null;
   isNetworkConnected?: boolean;
+  conversationMode?: boolean; // US-005: Hands-free continuous listening
+  onConversationModeChange?: (enabled: boolean) => void; // US-005: Callback to toggle mode off
 }
 
 interface VoiceSessionReturn {
@@ -36,6 +38,7 @@ interface VoiceSessionReturn {
   isConnected: boolean;
   error: ErrorMessage | null;
   clearError: () => void;
+  isConversationActive: boolean; // US-005: Whether hands-free mode is currently active
 }
 
 // Silence detection config
@@ -100,13 +103,20 @@ async function handleNotificationRequest(
   }
 }
 
-export function useVoiceSession({ token, isNetworkConnected = true }: VoiceSessionOptions): VoiceSessionReturn {
+export function useVoiceSession({ 
+  token, 
+  isNetworkConnected = true,
+  conversationMode = false,
+  onConversationModeChange,
+}: VoiceSessionOptions): VoiceSessionReturn {
   const [orbState, setOrbState] = useState<OrbState>('idle');
   const [transcript, setTranscript] = useState<string | null>(null);
   const [transcriptRole, setTranscriptRole] = useState<'user' | 'assistant'>('user');
   const [audioLevel, setAudioLevel] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<ErrorMessage | null>(null);
+  const [isConversationActive, setIsConversationActive] = useState(false); // US-005
+
   // US-023: Timer management
   const { createTimer, cancelTimer, cancelLastTimer, cancelAllTimers, timers } = useTimers();
   
@@ -115,6 +125,55 @@ export function useVoiceSession({ token, isNetworkConnected = true }: VoiceSessi
   useEffect(() => {
     isNetworkConnectedRef.current = isNetworkConnected;
   }, [isNetworkConnected]);
+
+  // US-005: Store conversation mode settings in refs for use in callbacks
+  const conversationModeRef = useRef(conversationMode);
+  const onConversationModeChangeRef = useRef(onConversationModeChange);
+  useEffect(() => {
+    conversationModeRef.current = conversationMode;
+    onConversationModeChangeRef.current = onConversationModeChange;
+  }, [conversationMode, onConversationModeChange]);
+
+  // US-005: Global silence timeout for conversation mode (30s)
+  const conversationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const clearConversationTimeout = useCallback(() => {
+    if (conversationTimeoutRef.current) {
+      clearTimeout(conversationTimeoutRef.current);
+      conversationTimeoutRef.current = null;
+    }
+  }, []);
+
+  // US-005: Exit conversation mode (called on "stop" command, timeout, or cancel)
+  const exitConversationMode = useCallback(() => {
+    console.log('[US-005] Exiting conversation mode');
+    clearConversationTimeout();
+    setIsConversationActive(false);
+    onConversationModeChangeRef.current?.(false);
+  }, [clearConversationTimeout]);
+
+  // US-005: Reset conversation timeout on activity
+  const resetConversationTimeout = useCallback(() => {
+    clearConversationTimeout();
+    if (conversationModeRef.current) {
+      conversationTimeoutRef.current = setTimeout(() => {
+        console.log('[US-005] Conversation timeout - exiting hands-free mode');
+        exitConversationMode();
+        setOrbState('idle');
+      }, CONVERSATION_TIMEOUT_MS);
+    }
+  }, [clearConversationTimeout, exitConversationMode]);
+
+  // US-005: Cleanup timeout when conversation mode is disabled
+  useEffect(() => {
+    if (!conversationMode) {
+      clearConversationTimeout();
+      if (isConversationActive) {
+        setIsConversationActive(false);
+      }
+    }
+    return () => clearConversationTimeout();
+  }, [conversationMode, isConversationActive, clearConversationTimeout]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const recordingRef = useRef<Audio.Recording | null>(null);
@@ -991,5 +1050,6 @@ export function useVoiceSession({ token, isNetworkConnected = true }: VoiceSessi
     isConnected,
     error,
     clearError,
+    isConversationActive,
   };
 }

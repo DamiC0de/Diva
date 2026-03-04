@@ -13,6 +13,7 @@ export interface UserSettings {
   };
   voice: {
     wake_word_mode: 'always_on' | 'smart' | 'manual';
+    conversationMode: boolean; // US-005: Hands-free continuous listening
   };
   onboarding_completed: boolean;
   tutorial_completed: boolean;
@@ -21,7 +22,7 @@ export interface UserSettings {
 
 const DEFAULT_SETTINGS: UserSettings = {
   personality: { tone: 'friendly', verbosity: 'normal', formality: 'tu', humor: true },
-  voice: { wake_word_mode: 'manual' },
+  voice: { wake_word_mode: 'manual', conversationMode: false },
   onboarding_completed: false,
   tutorial_completed: false,
   timezone: 'Europe/Paris',
