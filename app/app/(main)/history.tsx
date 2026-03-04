@@ -11,7 +11,6 @@ import {
   TouchableOpacity,
   Animated,
   Alert,
-  Dimensions,
 } from 'react-native';
 import { Screen } from '../../components/ui/Screen';
 import { useHistory, HistoryEntry } from '../../hooks/useHistory';
@@ -19,7 +18,6 @@ import { useTheme } from '../../constants/theme';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DELETE_THRESHOLD = 80;
 
 interface SwipeableItemProps {

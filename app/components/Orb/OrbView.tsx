@@ -3,7 +3,7 @@
  * 2026 Design: Living mascot that listens and speaks
  */
 import React, { useEffect, useRef, useMemo } from 'react';
-import { StyleSheet, Animated, Pressable, Easing, View, Image } from 'react-native';
+import { StyleSheet, Animated, Pressable, Easing, Image } from 'react-native';
 import { useTheme } from '../../constants/theme';
 
 export type OrbState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
@@ -302,6 +302,7 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
     }
     
     return () => { animRef.current?.stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Animation refs are stable, only re-run on state change
   }, [state]);
 
   // Audio-reactive boost
@@ -315,6 +316,7 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         useNativeDriver: true 
       }).start();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Animation ref is stable
   }, [audioLevel, state]);
 
   // Interpolations

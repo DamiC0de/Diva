@@ -1,5 +1,4 @@
-import { Stack } from 'expo-router';
-import { router } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 

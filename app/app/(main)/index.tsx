@@ -49,7 +49,7 @@ export default function OrbScreen() {
     transcriptRole,
     audioLevel,
     toggleSession,
-    cancel,
+    // cancel available for future use
     isConnected: isWsConnected,
     error,
     clearError,

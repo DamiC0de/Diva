@@ -6,7 +6,7 @@ import React, { useRef, useState } from 'react';
 import {
   Image,
   View, FlatList, Dimensions, TextInput, TouchableOpacity,
-  StyleSheet, Text, Animated,
+  StyleSheet, Text,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { useTheme, type Theme } from '../../constants/theme';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 interface OnboardingData {
   name: string;
@@ -73,13 +73,13 @@ export default function OnboardingScreen() {
           />
         </View>
         <Text style={s.brandName}>diva</Text>
-        <Text style={s.tagline}>Ton compagnon IA{'\n'}toujours à l'écoute</Text>
+        <Text style={s.tagline}>Ton compagnon IA{'\n'}toujours à l&apos;écoute</Text>
       </View>
 
       {/* Bottom section */}
       <View style={s.bottomSection}>
         <Text style={s.description}>
-          Parle naturellement. Diva comprend, mémorise et s'adapte à toi au fil du temps.
+          Parle naturellement. Diva comprend, mémorise et s&apos;adapte à toi au fil du temps.
         </Text>
         <TouchableOpacity style={s.primaryBtn} onPress={goNext} activeOpacity={0.85}>
           <LinearGradient
@@ -105,7 +105,7 @@ export default function OnboardingScreen() {
         </View>
         <Text style={s.pageTitle}>Accès au micro</Text>
         <Text style={s.pageSubtitle}>
-          Pour que Diva puisse t'entendre, autorise l'accès au microphone.
+          Pour que Diva puisse t&apos;entendre, autorise l&apos;accès au microphone.
         </Text>
       </View>
       <View style={s.bottomSection}>
@@ -207,7 +207,7 @@ export default function OnboardingScreen() {
           {data.name ? `Enchanté${data.formality === 'vous' ? '' : 'e'}, ${data.name} !` : 'Tout est prêt !'}
         </Text>
         <Text style={s.pageSubtitle}>
-          Appuie sur l'orbe et parle.{'\n'}Diva s'occupe du reste.
+          Appuie sur l&apos;orbe et parle.{'\n'}Diva s&apos;occupe du reste.
         </Text>
 
         {/* Features */}

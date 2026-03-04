@@ -337,7 +337,7 @@ export function useVoiceSession({
       console.log('[US-040] Failed to start keyword listening:', err);
       isKeywordListeningRef.current = false;
     }
-  }, [stopKeywordListening]);
+  }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -939,6 +939,7 @@ export function useVoiceSession({
         wsRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- WebSocket setup only depends on token; internal callbacks use refs
   }, [token]);
 
   // --- Audio playback queue ---
@@ -1006,6 +1007,7 @@ export function useVoiceSession({
       isPlayingRef.current = false;
       playNextInQueue();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- doStartListening excluded to avoid circular dependency
   }, [stopKeywordListening]);
 
   const MAX_AUDIO_QUEUE_SIZE = 20;
@@ -1187,6 +1189,7 @@ export function useVoiceSession({
     } finally {
       isPreparingRecordingRef.current = false;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- doStopAndSend excluded to avoid circular dependency
   }, []);
 
   const doStopAndSend = useCallback(async () => {
@@ -1249,6 +1252,7 @@ export function useVoiceSession({
     } finally {
       stoppingRef.current = false;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- doStartListening excluded to avoid circular dependency
   }, []);
 
   // --- Public API ---

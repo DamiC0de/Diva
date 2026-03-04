@@ -37,6 +37,7 @@ export function useSettings() {
   // Load settings on mount
   useEffect(() => {
     loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Only run on mount
   }, []);
 
   interface SettingsResponse {

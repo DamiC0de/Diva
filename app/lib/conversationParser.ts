@@ -58,13 +58,11 @@ function extractContactName(raw: string): string {
  * Returns null if the command doesn't match conversation patterns
  */
 export function parseConversationRequest(text: string): ConversationRequest | null {
-  const lowered = text.toLowerCase();
-  
   // Pattern groups (order matters - more specific patterns first)
-  const patterns: Array<{
+  const patterns: {
     regex: RegExp;
     extract: (match: RegExpMatchArray) => { contact: string; app: string } | null;
-  }> = [
+  }[] = [
     // "ouvre la conversation avec Julie sur WhatsApp"
     {
       regex: /(?:ouvre|ouvrir|va sur|montre|affiche).+conversation.+(?:avec|de)\s+(.+?)\s+(?:sur|dans|via)\s+(\w+)/i,

@@ -18,7 +18,7 @@ interface UseWakeWordOptions {
   onWakeWordDetected: () => void;
 }
 
-export function useWakeWord({ mode, onWakeWordDetected }: UseWakeWordOptions) {
+export function useWakeWord({ mode, onWakeWordDetected: _onWakeWordDetected }: UseWakeWordOptions) {
   const [isListening, setIsListening] = useState(false);
   const [isAvailable] = useState(false); // True when Porcupine SDK is installed
 

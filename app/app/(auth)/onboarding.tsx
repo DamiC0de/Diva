@@ -89,7 +89,7 @@ export default function OnboardingScreen() {
       content: (
         <View style={s.stepContent}>
           <Text variant="heading" style={s.centerText}>
-            Comment t'appeler ?
+            Comment t&apos;appeler ?
           </Text>
           <TextInput
             style={s.nameInput}

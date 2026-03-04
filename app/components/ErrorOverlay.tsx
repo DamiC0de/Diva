@@ -47,6 +47,7 @@ export function ErrorOverlay({ error, onRetry, onDismiss }: ErrorOverlayProps) {
         }),
       ]).start();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Animation refs are stable
   }, [error]);
 
   if (!error) return null;

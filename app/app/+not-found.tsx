@@ -9,7 +9,7 @@ export default function NotFoundScreen() {
       <View style={styles.container}>
         <Text variant="heading">Page introuvable</Text>
         <Text variant="body" style={styles.subtitle}>
-          Cette page n'existe pas.
+          Cette page n&apos;existe pas.
         </Text>
         <Link href="/" asChild>
           <Button title="Retour à l'accueil" onPress={() => {}} />

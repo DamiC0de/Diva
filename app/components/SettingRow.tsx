@@ -2,7 +2,7 @@
  * EL-014 — Reusable Settings Row Components (dark mode)
  */
 import React from 'react';
-import { View, Switch, TouchableOpacity, StyleSheet, StyleProp, TextStyle } from 'react-native';
+import { View, Switch, TouchableOpacity, StyleSheet } from 'react-native';
 import { Text } from './ui/Text';
 import { useTheme } from '../constants/theme';
 

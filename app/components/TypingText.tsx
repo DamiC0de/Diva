@@ -47,6 +47,7 @@ export function TypingText({
     blink.start();
     
     return () => blink.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Animation ref is stable
   }, [showCursor]);
   
   // Typing effect

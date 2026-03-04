@@ -3,11 +3,9 @@
  * Shows tooltips highlighting UI elements on first use
  */
 import React, { useState } from 'react';
-import { View, TouchableOpacity, Dimensions, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Text } from './ui/Text';
 import { colors } from '../constants/colors';
-
-const { width, height } = Dimensions.get('window');
 
 interface TutorialStep {
   title: string;
@@ -74,7 +72,7 @@ export function TutorialOverlay({ userName, onComplete }: Props) {
             </TouchableOpacity>
           ))}
           <TouchableOpacity style={styles.doneBtn} onPress={onComplete}>
-            <Text style={styles.doneBtnText}>C'est parti ! 🚀</Text>
+            <Text style={styles.doneBtnText}>C&apos;est parti ! 🚀</Text>
           </TouchableOpacity>
         </View>
       </View>

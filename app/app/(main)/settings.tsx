@@ -28,7 +28,7 @@ interface TelegramAuthResponse {
 }
 
 interface MemoriesResponse {
-  memories?: Array<{ category: string; content: string }>;
+  memories?: { category: string; content: string }[];
 }
 
 const TONE_OPTIONS = [
@@ -53,7 +53,8 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const { settings, loading, updatePersonality, updateSetting } = useSettings();
   const [gmailEmail, setGmailEmail] = useState<string | null>(null);
-  const [gmailLoading, setGmailLoading] = useState(false);
+  // gmailLoading reserved for future loading state UI
+  const [_gmailLoading, setGmailLoading] = useState(false);
   const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
 
   // Check connection statuses on mount

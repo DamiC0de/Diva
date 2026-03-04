@@ -43,6 +43,7 @@ export function TranscriptOverlay({
         useNativeDriver: true 
       }).start();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Animation ref is stable
   }, [text, role]);
 
   // Auto-scroll to bottom when text changes
