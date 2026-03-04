@@ -9,6 +9,7 @@ import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { isCancelCommand } from '../lib/cancelDetection';
 import { containsInterruptKeyword, findInterruptKeyword } from '../lib/keywordDetector';
+import { addToHistory } from '../lib/historyStore';
 import type { OrbState } from '../components/Orb/OrbView';
 import { getNotifications } from '../modules/notification-reader/src';
 import { getEvents, formatEventsForContext, createEvent } from '../lib/calendar';
@@ -118,6 +119,10 @@ export function useVoiceSession({
   const [orbState, setOrbState] = useState<OrbState>('idle');
   const [transcript, setTranscript] = useState<string | null>(null);
   const [transcriptRole, setTranscriptRole] = useState<'user' | 'assistant'>('user');
+  
+  // US-008: Track messages for history
+  const lastUserMessageRef = useRef<string | null>(null);
+  const lastAssistantMessageRef = useRef<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<ErrorMessage | null>(null);
@@ -396,6 +401,18 @@ export function useVoiceSession({
                 setOrbState('speaking');
               } else if (msg.state === 'COMPLETED' || msg.state === 'completed') {
                 responseCompleteRef.current = true; // Response complete
+                
+                // US-008: Save to history when response is complete
+                if (lastUserMessageRef.current && lastAssistantMessageRef.current) {
+                  addToHistory({
+                    userText: lastUserMessageRef.current,
+                    assistantText: lastAssistantMessageRef.current,
+                  }).catch(err => console.warn('[History] Failed to save:', err));
+                  // Reset refs for next conversation turn
+                  lastUserMessageRef.current = null;
+                  lastAssistantMessageRef.current = null;
+                }
+                
                 // If no audio is playing or queued, switch to idle or auto-listen
                 if (!isPlayingRef.current && audioQueueRef.current.length === 0) {
                   if (autoListenRef.current) {
@@ -440,6 +457,8 @@ export function useVoiceSession({
               
               setTranscript(msg.text);
               setTranscriptRole('user');
+              // US-008: Track for history
+              lastUserMessageRef.current = msg.text;
               break;
 
             case 'response':
@@ -453,6 +472,8 @@ export function useVoiceSession({
               }
               setTranscript(responseText);
               setTranscriptRole('assistant');
+              // US-008: Track for history
+              lastAssistantMessageRef.current = responseText;
               // US-028: Transcript will be cleared 2s after TTS ends (see playNextInQueue)
               break;
             }
