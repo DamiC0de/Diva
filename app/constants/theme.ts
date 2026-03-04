@@ -1,32 +1,33 @@
 /**
- * Elio Design System — 2026 Trends
+ * DIVA Design System — 2026
  * 
- * Approach: "Mermaidcore meets Cloud Dancer"
- * - Light: Cloud Dancer whites + soft teal accents
- * - Dark: Deep navy/charcoal + iridescent violet-teal gradient accent
- * - Both: Warm naturals, no harsh contrasts
+ * Palette inspirée du logo mascotte "Flamme Esprit"
+ * Gradient: Cyan (#A8E0F0) → Bleu → Indigo (#5856D6) → Violet (#4A4B91)
+ * Style: Compagnon IA chaleureux, premium, Apple-like
  */
 import { useColorScheme } from 'react-native';
 
-// Shared accent palette
+// Shared accent palette — harmonized with mascot logo
 const accent = {
-  primary: '#6366F1',       // Indigo — modern, trustworthy
-  primaryLight: '#818CF8',
-  primarySoft: 'rgba(99, 102, 241, 0.12)',
-  teal: '#2DD4BF',          // Teal — mermaidcore iridescent
-  tealSoft: 'rgba(45, 212, 191, 0.12)',
-  coral: '#F472B6',         // Soft pink — dopamine pop
+  primary: '#5856D6',       // Indigo Apple — main brand color
+  primaryLight: '#7B78E8',  // Lighter indigo for dark mode
+  primarySoft: 'rgba(88, 86, 214, 0.12)',
+  teal: '#20808D',          // Teal accent (secondary)
+  tealSoft: 'rgba(32, 128, 141, 0.12)',
+  cyan: '#A8E0F0',          // Cyan from logo top
+  cyanSoft: 'rgba(168, 224, 240, 0.15)',
+  violet: '#4A4B91',        // Deep violet from logo base
   success: '#34D399',
-  error: '#F87171',
+  error: '#EF4444',
   warning: '#FBBF24',
 };
 
-// Orb state colors (US-024, US-025)
+// Orb state colors — aligned with logo gradient
 const orbColors = {
-  orbIdle: '#8B5CF6',       // Violet — ready, waiting
-  orbListening: '#3B82F6',  // Blue — active listening
-  orbProcessing: '#06B6D4', // Cyan — thinking/processing
-  orbSpeaking: '#10B981',   // Green — speaking response
+  orbIdle: '#5856D6',       // Indigo — primary, ready
+  orbListening: '#7DD3E8',  // Cyan — active, alert
+  orbProcessing: '#818CF8', // Light indigo — thinking
+  orbSpeaking: '#4A4B91',   // Deep violet — speaking
   orbError: '#EF4444',      // Red — error state
 };
 

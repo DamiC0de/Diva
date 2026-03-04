@@ -51,7 +51,7 @@ export default function LoginScreen() {
         />
         <Text variant="hero" style={{ ...styles.title, color: theme.text }}>diva</Text>
         <Text variant="body" color={theme.textSecondary} style={styles.subtitle}>
-          Ton assistant vocal intelligent
+          Ton compagnon IA
         </Text>
       </View>
 

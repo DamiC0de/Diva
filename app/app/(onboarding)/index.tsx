@@ -1,6 +1,7 @@
 /**
- * EL-029 — Onboarding Flow — 2026 Design
- * Cloud Dancer + Mermaidcore palette, dark/light adaptive
+ * DIVA Onboarding Flow — 2026
+ * Palette: Cyan → Indigo → Violet (aligned with mascot logo)
+ * Style: Friendly AI companion, warm, premium
  */
 import React, { useRef, useState } from 'react';
 import {
@@ -70,11 +71,11 @@ export default function OnboardingScreen() {
           resizeMode="contain"
         />
         <Text style={s.brand}>diva</Text>
-        <Text style={s.tagline}>Ton assistant vocal{'\n'}intelligent</Text>
+        <Text style={s.tagline}>Ton compagnon IA{'\n'}toujours à l'écoute</Text>
       </View>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Text style={s.desc}>
-          Parle naturellement. Diva comprend ta voix, exécute tes demandes et s'adapte à toi.
+          Parle naturellement. Diva comprend, mémorise et s'adapte à toi au fil du temps.
         </Text>
         <TouchableOpacity style={s.btn} onPress={goNext} activeOpacity={0.85}>
           <Text style={s.btnText}>Commencer</Text>
@@ -185,17 +186,17 @@ export default function OnboardingScreen() {
       </View>
       <View style={s.bottom}>
         <View style={s.features}>
-          {['Météo, musique, recherche', 'Mémoire contextuelle', 'Réponse vocale naturelle'].map((f, i) => (
+          {['Comprend ta voix naturellement', 'Se souvient de tes préférences', 'Répond comme un ami'].map((f, i) => (
             <View key={i} style={s.featureRow}>
-              <View style={[s.featureCheck, { backgroundColor: theme.tealSoft }]}>
-                <Text style={[s.featureCheckText, { color: theme.teal }]}>✓</Text>
+              <View style={[s.featureCheck, { backgroundColor: theme.cyanSoft }]}>
+                <Text style={[s.featureCheckText, { color: theme.primary }]}>✓</Text>
               </View>
               <Text style={s.featureText}>{f}</Text>
             </View>
           ))}
         </View>
-        <TouchableOpacity style={[s.btn, { backgroundColor: theme.teal }]} onPress={finish} activeOpacity={0.85}>
-          <Text style={s.btnText}>Commencer à parler</Text>
+        <TouchableOpacity style={[s.btn, { backgroundColor: theme.primary }]} onPress={finish} activeOpacity={0.85}>
+          <Text style={s.btnText}>Rencontrer Diva</Text>
         </TouchableOpacity>
       </View>
     </View>
