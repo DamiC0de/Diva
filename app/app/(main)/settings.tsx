@@ -17,6 +17,7 @@ import { useSettings } from '../../hooks/useSettings';
 import { useTheme } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { api, API_BASE_URL } from '../../lib/api';
+import { clearTokens as clearGmailTokens } from '../../lib/gmail';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -104,9 +105,20 @@ export default function SettingsScreen() {
       { text: 'Annuler', style: 'cancel' },
       { text: 'Déconnecter', style: 'destructive', onPress: async () => {
         try {
-          await api.delete('/api/v1/gmail/disconnect');
+          // Clear local tokens first (always works)
+          await clearGmailTokens();
+          // Then try to clear server-side (may fail if session expired)
+          try {
+            await api.delete('/api/v1/gmail/disconnect');
+          } catch {
+            // Server-side cleanup failed, but local is cleared
+            console.warn('[Settings] Server-side Gmail disconnect failed');
+          }
           setGmailEmail(null);
-        } catch { Alert.alert('Erreur', 'Impossible de déconnecter Gmail'); }
+        } catch (err) {
+          console.error('[Settings] Gmail disconnect error:', err);
+          Alert.alert('Erreur', 'Impossible de déconnecter Gmail');
+        }
       }},
     ]);
   };
