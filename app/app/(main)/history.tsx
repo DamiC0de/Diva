@@ -1,22 +1,23 @@
 /**
- * US-008 — History Screen
- * Display conversation history with swipe-to-delete
+ * History Screen — 2026 Design
+ * Clean conversation history with swipe-to-delete
  */
 import React, { useRef } from 'react';
 import { 
   View, 
-  Text, 
   FlatList, 
   StyleSheet, 
   TouchableOpacity,
   Animated,
   Alert,
 } from 'react-native';
+import { Text } from '../../components/ui/Text';
 import { Screen } from '../../components/ui/Screen';
 import { useHistory, HistoryEntry } from '../../hooks/useHistory';
 import { useTheme } from '../../constants/theme';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { User, Sparkles, Trash2, MessageCircle } from 'lucide-react-native';
 
 const DELETE_THRESHOLD = 80;
 
@@ -37,7 +38,6 @@ function SwipeableItem({ item, onDelete, theme }: SwipeableItemProps) {
   const handleTouchMove = (e: any) => {
     const diff = e.nativeEvent.pageX - panX.current;
     if (diff < 0) {
-      // Swiping left
       translateX.setValue(Math.max(diff, -DELETE_THRESHOLD));
     }
   };
@@ -45,13 +45,11 @@ function SwipeableItem({ item, onDelete, theme }: SwipeableItemProps) {
   const handleTouchEnd = () => {
     const currentValue = (translateX as any)._value;
     if (currentValue < -DELETE_THRESHOLD / 2) {
-      // Show delete button
       Animated.spring(translateX, {
         toValue: -DELETE_THRESHOLD,
         useNativeDriver: true,
       }).start();
     } else {
-      // Reset
       Animated.spring(translateX, {
         toValue: 0,
         useNativeDriver: true,
@@ -88,7 +86,7 @@ function SwipeableItem({ item, onDelete, theme }: SwipeableItemProps) {
         onPress={handleDelete}
         activeOpacity={0.8}
       >
-        <Text style={styles.deleteText}>🗑️</Text>
+        <Trash2 size={22} color="#fff" />
       </TouchableOpacity>
       
       {/* Swipeable content */}
@@ -102,15 +100,30 @@ function SwipeableItem({ item, onDelete, theme }: SwipeableItemProps) {
         onTouchEnd={handleTouchEnd}
       >
         <View style={[styles.item, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          {/* Timestamp */}
           <Text style={[styles.time, { color: theme.textMuted }]}>
             {formatDistanceToNow(item.timestamp, { addSuffix: true, locale: fr })}
           </Text>
-          <Text style={[styles.user, { color: theme.text }]}>
-            🧑 {truncate(item.userText, 100)}
-          </Text>
-          <Text style={[styles.assistant, { color: theme.textSecondary }]}>
-            ✨ {truncate(item.assistantText, 150)}
-          </Text>
+          
+          {/* User message */}
+          <View style={styles.messageRow}>
+            <View style={[styles.iconBadge, { backgroundColor: theme.bgSecondary }]}>
+              <User size={14} color={theme.textSecondary} />
+            </View>
+            <Text style={[styles.messageText, { color: theme.text }]} numberOfLines={2}>
+              {truncate(item.userText, 100)}
+            </Text>
+          </View>
+          
+          {/* Assistant response */}
+          <View style={[styles.messageRow, styles.assistantRow]}>
+            <View style={[styles.iconBadge, { backgroundColor: theme.primary + '20' }]}>
+              <Sparkles size={14} color={theme.primary} />
+            </View>
+            <Text style={[styles.messageText, { color: theme.textSecondary }]} numberOfLines={2}>
+              {truncate(item.assistantText, 150)}
+            </Text>
+          </View>
         </View>
       </Animated.View>
     </View>
@@ -140,8 +153,10 @@ export default function HistoryScreen() {
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
-      <Text style={[styles.emptyEmoji]}>💬</Text>
-      <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+      <View style={[styles.emptyIcon, { backgroundColor: theme.card }]}>
+        <MessageCircle size={32} color={theme.textMuted} />
+      </View>
+      <Text style={[styles.emptyText, { color: theme.text }]}>
         Aucune conversation
       </Text>
       <Text style={[styles.emptySubtext, { color: theme.textMuted }]}>
@@ -158,7 +173,7 @@ export default function HistoryScreen() {
         <Text style={[styles.headerText, { color: theme.textSecondary }]}>
           {history.length} conversation{history.length > 1 ? 's' : ''}
         </Text>
-        <TouchableOpacity onPress={handleClearAll}>
+        <TouchableOpacity onPress={handleClearAll} activeOpacity={0.7}>
           <Text style={[styles.clearText, { color: theme.error }]}>
             Tout effacer
           </Text>
@@ -212,15 +227,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerText: {
-    fontSize: 14,
+    fontSize: 15,
+    fontFamily: 'Inter_500Medium',
   },
   clearText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontFamily: 'Inter_500Medium',
   },
   swipeContainer: {
     position: 'relative',
@@ -235,52 +251,70 @@ const styles = StyleSheet.create({
     width: DELETE_THRESHOLD,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 12,
-  },
-  deleteText: {
-    fontSize: 24,
+    borderRadius: 16,
   },
   itemWrapper: {
     backgroundColor: 'transparent',
   },
   item: {
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
   },
   time: {
     fontSize: 12,
-    marginBottom: 8,
+    fontFamily: 'Inter_400Regular',
+    marginBottom: 12,
   },
-  user: {
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  assistantRow: {
+    marginTop: 10,
+  },
+  iconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  messageText: {
+    flex: 1,
     fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 8,
-  },
-  assistant: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 21,
   },
   emptyContainer: {
     alignItems: 'center',
     paddingHorizontal: 32,
   },
-  emptyEmoji: {
-    fontSize: 48,
-    marginBottom: 16,
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   emptyText: {
     fontSize: 18,
-    fontWeight: '600',
+    fontFamily: 'Inter_600SemiBold',
     marginBottom: 8,
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
     textAlign: 'center',
+    lineHeight: 22,
   },
   loadingText: {
     textAlign: 'center',
     marginTop: 100,
     fontSize: 16,
+    fontFamily: 'Inter_400Regular',
   },
 });
