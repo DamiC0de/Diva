@@ -1052,10 +1052,13 @@ export class Orchestrator {
       }
       const sessionHistory = this.sessionHistory.get(socket)!;
 
-      // Parallel: memories + user settings
+      // Pre-check: skip memory for trivial queries
       const tPrep = Date.now();
+      const isTrivialQuery = /^(salut|bonjour|hey|coucou|ça va|oui|non|ok|merci|au revoir|stop|arrête|d'accord)[\s?!.,]*$/i.test(text.trim()) || text.trim().length < 10;
+      
+      // Parallel: memories (if needed) + user settings
       const [memories, userSettings] = await Promise.all([
-        this.retrieveMemories(request.userId, text),
+        isTrivialQuery ? Promise.resolve([]) : this.retrieveMemories(request.userId, text),
         (async (): Promise<any> => {
           try {
             const { data } = await getSupabase()
