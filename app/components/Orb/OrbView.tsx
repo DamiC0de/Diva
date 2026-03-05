@@ -61,18 +61,24 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
 
   const colors = stateColors[state];
 
-  // Reset all animations
+  // Reset all animations with smooth transition
   const resetAnimations = () => {
     animRef.current?.stop();
     [scale, translateY, rotate, tilt, glowOpacity, glowScale, 
      ring1Scale, ring1Opacity, ring2Scale, ring2Opacity, ring3Scale, ring3Opacity, shakeX]
       .forEach(anim => anim.stopAnimation());
     
-    // Reset to defaults
+    // Reset ALL values to neutral
+    scale.setValue(1);
+    translateY.setValue(0);
     shakeX.setValue(0);
     rotate.setValue(0);
     tilt.setValue(0);
-    translateY.setValue(0);
+    glowScale.setValue(1);
+    glowOpacity.setValue(0.4);
+    ring1Opacity.setValue(0);
+    ring2Opacity.setValue(0);
+    ring3Opacity.setValue(0);
   };
 
   // Ripple ring animation (for listening/speaking)

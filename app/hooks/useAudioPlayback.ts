@@ -114,6 +114,8 @@ export function useAudioPlayback(options: AudioPlaybackOptions = {}): AudioPlayb
   }, []);
 
   const enqueueAudio = useCallback((base64: string) => {
+    console.log('[AudioPlayback] enqueueAudio called, queue length:', audioQueueRef.current.length, 'isPlaying:', isPlayingRef.current);
+    
     // Reset stopped state when new audio comes in
     isStoppedRef.current = false;
     
@@ -128,6 +130,7 @@ export function useAudioPlayback(options: AudioPlaybackOptions = {}): AudioPlayb
     
     // Notify when starting fresh playback
     if (wasEmpty) {
+      console.log('[AudioPlayback] Starting fresh playback - calling onPlaybackStart');
       onPlaybackStartRef.current?.();
     }
     
