@@ -1134,54 +1134,101 @@ export class Orchestrator {
         ttsPromises.push(promise);
       };
 
-      // First LLM call (may include tools)
-      let llmResult = await this.llm.chat({
-        userId: request.userId,
-        message: preSearchContext ? `${text}${preSearchContext}` : text,
-        history: sessionHistory.slice(0, -1),
-        memories,
-        tools: ELIO_TOOLS,
-        userSettings,
-      });
-      metrics.llm = Date.now() - tLlm;
+      // Check if this looks like a tool request (action words)
+      const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail)/i.test(text);
 
-      if (request.cancelled) return;
+      if (mightNeedTools) {
+        // Use regular chat with tools
+        let llmResult = await this.llm.chat({
+          userId: request.userId,
+          message: preSearchContext ? `${text}${preSearchContext}` : text,
+          history: sessionHistory.slice(0, -1),
+          memories,
+          tools: ELIO_TOOLS,
+          userSettings,
+        });
+        metrics.llm = Date.now() - tLlm;
 
-      // Handle tool use
-      if (llmResult.toolUse && llmResult.toolUse.length > 0) {
-        const tTools = Date.now();
-        const toolResults = await this.executeTools(llmResult.toolUse, request.userId, socket);
-        for (const tool of llmResult.toolUse) {
-          const openUrl = (tool as unknown as Record<string, unknown>)._openUrl as string | undefined;
-          if (openUrl) this.sendEvent(socket, { type: 'open_url', url: openUrl, requestId: request.id } as ServerEvent);
+        if (request.cancelled) return;
+
+        // Handle tool use
+        if (llmResult.toolUse && llmResult.toolUse.length > 0) {
+          const tTools = Date.now();
+          const toolResults = await this.executeTools(llmResult.toolUse, request.userId, socket);
+          for (const tool of llmResult.toolUse) {
+            const openUrl = (tool as unknown as Record<string, unknown>)._openUrl as string | undefined;
+            if (openUrl) this.sendEvent(socket, { type: 'open_url', url: openUrl, requestId: request.id } as ServerEvent);
+          }
+
+          const toolContext = toolResults.map(r => `[${r.name}]: ${r.result}`).join('\n');
+          llmResult = await this.llm.chat({
+            userId: request.userId,
+            message: toolContext,
+            history: [
+              ...sessionHistory.slice(0, -1),
+              { role: 'user' as const, content: text },
+              { role: 'assistant' as const, content: llmResult.text || '[tool]' },
+            ],
+            memories,
+            userSettings,
+          });
+          metrics.tools = Date.now() - tTools;
+          if (request.cancelled) return;
         }
 
-        const toolContext = toolResults.map(r => `[${r.name}]: ${r.result}`).join('\n');
-        llmResult = await this.llm.chat({
+        fullText = this.cleanForTTS(llmResult.text);
+      } else {
+        // Use streaming LLM → TTS for faster response
+        let sentenceBuffer = '';
+        
+        const llmStream = this.llm.chatStream({
           userId: request.userId,
-          message: toolContext,
-          history: [
-            ...sessionHistory.slice(0, -1),
-            { role: 'user' as const, content: text },
-            { role: 'assistant' as const, content: llmResult.text || '[tool]' },
-          ],
+          message: preSearchContext ? `${text}${preSearchContext}` : text,
+          history: sessionHistory.slice(0, -1),
           memories,
           userSettings,
         });
-        metrics.tools = Date.now() - tTools;
-        if (request.cancelled) return;
+
+        for await (const token of llmStream) {
+          if (request.cancelled) break;
+          
+          sentenceBuffer += token;
+          fullText += token;
+          
+          // Check for sentence boundary
+          const sentenceMatch = sentenceBuffer.match(/^(.*?[.!?])\s*(.*)$/s);
+          if (sentenceMatch) {
+            const completeSentence = sentenceMatch[1].trim();
+            sentenceBuffer = sentenceMatch[2];
+            
+            if (completeSentence) {
+              const cleanSentence = this.cleanForTTS(completeSentence);
+              if (cleanSentence) {
+                streamSentence(cleanSentence, sentenceIndex++);
+              }
+            }
+          }
+        }
+        
+        // Handle any remaining text
+        if (sentenceBuffer.trim()) {
+          const cleanSentence = this.cleanForTTS(sentenceBuffer.trim());
+          if (cleanSentence) {
+            streamSentence(cleanSentence, sentenceIndex++);
+          }
+        }
+        
+        metrics.llm = Date.now() - tLlm;
+        fullText = this.cleanForTTS(fullText);
       }
 
-      // Clean LLM output and start TTS streaming
-      fullText = this.cleanForTTS(llmResult.text);
-      
-      // Split into sentences and start TTS immediately
+      // If we didn't stream TTS yet (tool path), do it now
       const tTts = Date.now();
-      const sentences = fullText.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 0);
-      
-      // Start all TTS in parallel (they'll be sent in order as they complete)
-      for (const sentence of sentences) {
-        streamSentence(sentence, sentenceIndex++);
+      if (sentenceIndex === 0 && fullText.trim()) {
+        const sentences = fullText.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 0);
+        for (const sentence of sentences) {
+          streamSentence(sentence, sentenceIndex++);
+        }
       }
       
       // Wait for all TTS to complete
