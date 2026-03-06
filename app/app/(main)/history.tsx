@@ -1,8 +1,8 @@
 /**
  * History Screen — 2026 Design
- * Clean conversation history with swipe-to-delete
+ * Clean conversation history with swipe-to-delete and tap to expand
  */
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   View, 
   FlatList, 
@@ -10,6 +10,9 @@ import {
   TouchableOpacity,
   Animated,
   Alert,
+  Modal,
+  ScrollView,
+  Pressable,
 } from 'react-native';
 import { Text } from '../../components/ui/Text';
 import { Screen } from '../../components/ui/Screen';
@@ -24,10 +27,11 @@ const DELETE_THRESHOLD = 80;
 interface SwipeableItemProps {
   item: HistoryEntry;
   onDelete: (id: string) => void;
+  onPress: (item: HistoryEntry) => void;
   theme: ReturnType<typeof useTheme>;
 }
 
-function SwipeableItem({ item, onDelete, theme }: SwipeableItemProps) {
+function SwipeableItem({ item, onDelete, onPress, theme }: SwipeableItemProps) {
   const translateX = useRef(new Animated.Value(0)).current;
   const panX = useRef(0);
 
@@ -99,7 +103,11 @@ function SwipeableItem({ item, onDelete, theme }: SwipeableItemProps) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        <View style={[styles.item, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+        <TouchableOpacity 
+          onPress={() => onPress(item)}
+          activeOpacity={0.7}
+          style={[styles.item, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+        >
           {/* Timestamp */}
           <Text style={[styles.time, { color: theme.textMuted }]}>
             {formatDistanceToNow(item.timestamp, { addSuffix: true, locale: fr })}
@@ -124,7 +132,7 @@ function SwipeableItem({ item, onDelete, theme }: SwipeableItemProps) {
               {truncate(item.assistantText, 150)}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
       </Animated.View>
     </View>
   );
@@ -133,6 +141,15 @@ function SwipeableItem({ item, onDelete, theme }: SwipeableItemProps) {
 export default function HistoryScreen() {
   const theme = useTheme();
   const { history, remove, clear, loading } = useHistory();
+  const [selectedItem, setSelectedItem] = useState<HistoryEntry | null>(null);
+
+  const handleItemPress = (item: HistoryEntry) => {
+    setSelectedItem(item);
+  };
+
+  const handleCloseModal = () => {
+    setSelectedItem(null);
+  };
 
   const handleClearAll = () => {
     if (history.length === 0) return;
@@ -148,7 +165,7 @@ export default function HistoryScreen() {
   };
 
   const renderItem = ({ item }: { item: HistoryEntry }) => (
-    <SwipeableItem item={item} onDelete={remove} theme={theme} />
+    <SwipeableItem item={item} onDelete={remove} onPress={handleItemPress} theme={theme} />
   );
 
   const renderEmpty = () => (
@@ -207,6 +224,62 @@ export default function HistoryScreen() {
           showsVerticalScrollIndicator={false}
         />
       </View>
+
+      {/* Detail Modal */}
+      <Modal
+        visible={!!selectedItem}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handleCloseModal}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: theme.bg }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: theme.divider }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Conversation</Text>
+            <Pressable onPress={handleCloseModal} style={styles.closeButton}>
+              <Text style={[styles.closeButtonText, { color: theme.primary }]}>Fermer</Text>
+            </Pressable>
+          </View>
+          
+          {selectedItem && (
+            <ScrollView 
+              style={styles.modalContent}
+              contentContainerStyle={styles.modalContentInner}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Timestamp */}
+              <Text style={[styles.modalTime, { color: theme.textMuted }]}>
+                {formatDistanceToNow(selectedItem.timestamp, { addSuffix: true, locale: fr })}
+              </Text>
+              
+              {/* User message */}
+              <View style={[styles.modalMessage, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+                <View style={styles.modalMessageHeader}>
+                  <View style={[styles.iconBadge, { backgroundColor: theme.bgSecondary }]}>
+                    <User size={14} color={theme.textSecondary} />
+                  </View>
+                  <Text style={[styles.modalMessageLabel, { color: theme.textSecondary }]}>Toi</Text>
+                </View>
+                <Text style={[styles.modalMessageText, { color: theme.text }]}>
+                  {selectedItem.userText}
+                </Text>
+              </View>
+              
+              {/* Assistant response */}
+              <View style={[styles.modalMessage, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+                <View style={styles.modalMessageHeader}>
+                  <View style={[styles.iconBadge, { backgroundColor: theme.primary + '20' }]}>
+                    <Sparkles size={14} color={theme.primary} />
+                  </View>
+                  <Text style={[styles.modalMessageLabel, { color: theme.textSecondary }]}>Diva</Text>
+                </View>
+                <Text style={[styles.modalMessageText, { color: theme.text }]}>
+                  {selectedItem.assistantText}
+                </Text>
+              </View>
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -316,5 +389,62 @@ const styles = StyleSheet.create({
     marginTop: 100,
     fontSize: 16,
     fontFamily: 'Inter_400Regular',
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  closeButton: {
+    padding: 8,
+  },
+  closeButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter_500Medium',
+  },
+  modalContent: {
+    flex: 1,
+  },
+  modalContentInner: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  modalTime: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  modalMessageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  modalMessageLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+  },
+  modalMessageText: {
+    fontSize: 16,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 24,
   },
 });
