@@ -78,6 +78,7 @@ export function useVoiceSession({
   // --- Refs for cross-hook communication ---
   const autoListenRef = useRef(false);
   const responseCompleteRef = useRef(true);
+  const autoListenScheduledRef = useRef(false); // Prevent double-scheduling
   const transcriptClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastUserMessageRef = useRef<string | null>(null);
   const lastAssistantMessageRef = useRef<string | null>(null);
@@ -149,15 +150,17 @@ export function useVoiceSession({
         await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
       } catch {}
 
-      if (autoListenRef.current) {
+      if (autoListenRef.current && !autoListenScheduledRef.current) {
+        autoListenScheduledRef.current = true;
         setTimeout(() => {
+          autoListenScheduledRef.current = false;
           if (autoListenRef.current) {
             doStartListening();
           } else {
             setOrbState('idle');
           }
         }, 300);
-      } else {
+      } else if (!autoListenRef.current) {
         setOrbState('idle');
       }
     },
@@ -353,8 +356,9 @@ export function useVoiceSession({
     stoppingRef.current = false;
 
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      console.log('[Audio] Skipping listen - WebSocket not ready');
-      setOrbState('idle');
+      console.log('[Audio] Skipping listen - WebSocket not ready, will retry on reconnect');
+      // Don't set idle - let reconnect handler resume listening
+      // autoListenRef remains true so we'll resume on reconnect
       return;
     }
 
@@ -438,9 +442,17 @@ export function useVoiceSession({
           }
 
           if (!isPlayingRef.current && audioQueueRef.current.length === 0) {
-            if (autoListenRef.current) {
-              setTimeout(() => doStartListening(), 300);
-            } else {
+            if (autoListenRef.current && !autoListenScheduledRef.current) {
+              autoListenScheduledRef.current = true;
+              setTimeout(() => {
+                autoListenScheduledRef.current = false;
+                if (autoListenRef.current) {
+                  doStartListening();
+                } else {
+                  setOrbState('idle');
+                }
+              }, 300);
+            } else if (!autoListenRef.current) {
               setOrbState('idle');
             }
           }
