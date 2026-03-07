@@ -18,6 +18,7 @@ import { sendNotificationToTelegram } from '../routes/telegram.js';
 import * as TelegramUser from './telegramUser.js';
 import { InboundMessageSchema } from '../schemas/ws-messages.js';
 import { checkRateLimit, getRateLimitConfig } from '../lib/rateLimiter.js';
+import { loadHistory, saveMessage, pruneHistory } from '../lib/conversationHistory.js';
 
 // Request states
 export enum RequestState {
@@ -711,7 +712,8 @@ export class Orchestrator {
   private activeRequests: Map<string, ActiveRequest> = new Map();
   private userActiveRequest: Map<string, string> = new Map(); // userId → requestId
   private sessionHistory: Map<WebSocket, { role: 'user' | 'assistant'; content: string }[]> = new Map(); // in-memory conversation per WS session
-  private userHistory: Map<string, { messages: { role: 'user' | 'assistant'; content: string }[]; lastActivity: number }> = new Map(); // persistent per userId across reconnects
+  private userHistory: Map<string, { messages: { role: 'user' | 'assistant'; content: string }[]; lastActivity: number }> = new Map(); // in-memory cache, persisted to Supabase
+  private historyLoadedUsers = new Set<string>(); // Track which users have had history loaded
 
   constructor(
     logger: FastifyBaseLogger,
@@ -1042,7 +1044,24 @@ export class Orchestrator {
 
       // Get/create session history for this WS connection
       if (!this.sessionHistory.has(socket)) {
-        const existingUserHist = this.userHistory.get(request.userId);
+        // Check in-memory cache first
+        let existingUserHist = this.userHistory.get(request.userId);
+        
+        // If not in memory and not loaded yet, load from Supabase
+        if (!existingUserHist && !this.historyLoadedUsers.has(request.userId)) {
+          try {
+            const persistedHistory = await loadHistory(request.userId);
+            if (persistedHistory.length > 0) {
+              existingUserHist = { messages: persistedHistory, lastActivity: Date.now() };
+              this.userHistory.set(request.userId, existingUserHist);
+              this.logger.info({ msg: 'Loaded history from Supabase', count: persistedHistory.length });
+            }
+            this.historyLoadedUsers.add(request.userId);
+          } catch (err) {
+            this.logger.warn({ msg: 'Failed to load history from Supabase', error: String(err) });
+          }
+        }
+        
         if (existingUserHist && existingUserHist.messages.length > 0) {
           this.sessionHistory.set(socket, [...existingUserHist.messages]);
           this.logger.info({ msg: 'Restored history', count: existingUserHist.messages.length });
@@ -1068,6 +1087,9 @@ export class Orchestrator {
       metrics.prep = Date.now() - tPrep;
 
       sessionHistory.push({ role: 'user', content: text });
+      
+      // Persist to Supabase (non-blocking)
+      saveMessage(request.userId, 'user', text).catch(() => {});
 
       const userHist = this.userHistory.get(request.userId);
       if (userHist) userHist.lastActivity = Date.now();
@@ -1244,6 +1266,14 @@ export class Orchestrator {
       // US-039: Add assistant response to history
       sessionHistory.push({ role: 'assistant', content: fullText });
       if (sessionHistory.length > 10) sessionHistory.splice(0, sessionHistory.length - 10);
+      
+      // Persist to Supabase (non-blocking)
+      saveMessage(request.userId, 'assistant', fullText).catch(() => {});
+      
+      // Prune old history periodically (every ~20 messages)
+      if (sessionHistory.length >= 10) {
+        pruneHistory(request.userId).catch(() => {});
+      }
 
       this.sendEvent(socket, { type: 'text_response', text: fullText, requestId: request.id, isPartial: false });
 
