@@ -19,7 +19,7 @@ import * as TelegramUser from './telegramUser.js';
 import { InboundMessageSchema } from '../schemas/ws-messages.js';
 import { checkRateLimit, getRateLimitConfig } from '../lib/rateLimiter.js';
 import { loadHistory, saveMessage, pruneHistory } from '../lib/conversationHistory.js';
-import { getLatestArticles, searchArticles, getLatestComparisons, searchComparisons } from '../lib/glucose.js';
+import { getLatestComparisons, searchComparisons } from '../lib/glucose.js';
 
 // Request states
 export enum RequestState {
@@ -493,35 +493,18 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
     },
   },
   {
-    name: 'get_glucose_articles',
-    description: "Obtenir les derniers ARTICLES bruts de presse depuis glucose.press. Utilise pour 'les dernières news', 'l'actu du jour'. Mentionne toujours glucose.press.",
+    name: 'get_glucose',
+    description: "OBLIGATOIRE pour toute question sur glucose.press, l'actualité, les news, les dossiers. Retourne les analyses comparatives de glucose.press — des synthèses qui croisent les perspectives de médias du monde entier (AFP, Reuters, NYT, médias chinois, israéliens, russes, etc.). Utilise quand l'utilisateur demande 'les news', 'l'actu', 'un dossier', 'ce qui se passe sur [sujet]'. Mentionne TOUJOURS que ça vient de glucose.press !",
     input_schema: {
       type: 'object' as const,
       properties: {
         limit: {
           type: 'number',
-          description: "Nombre d'articles à retourner (défaut 8, max 20)",
+          description: "Nombre d'analyses à retourner (défaut 5, max 10)",
         },
         search: {
           type: 'string',
-          description: "Mot-clé pour filtrer les articles (optionnel, ex: 'Ukraine', 'Trump', 'climat')",
-        },
-      },
-    },
-  },
-  {
-    name: 'get_glucose_comparisons',
-    description: "OBLIGATOIRE pour les DOSSIERS APPROFONDIS, ANALYSES COMPARATIVES, SYNTHÈSES de glucose.press. Utilise quand l'utilisateur demande un 'dossier', une 'analyse comparative', une 'synthèse', ou un article approfondi avec plusieurs sources. Ces dossiers croisent les perspectives de multiples médias internationaux. Mentionne toujours glucose.press.",
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        limit: {
-          type: 'number',
-          description: "Nombre de dossiers à retourner (défaut 5, max 10)",
-        },
-        search: {
-          type: 'string',
-          description: "Mot-clé pour filtrer les dossiers (optionnel, ex: 'Iran', 'Trump', 'Ukraine')",
+          description: "Mot-clé pour filtrer (optionnel, ex: 'Iran', 'Trump', 'Ukraine', 'climat')",
         },
       },
     },
@@ -1650,37 +1633,7 @@ export class Orchestrator {
             results.push({ name: tool.name, result: convResult });
             break;
           }
-          case 'get_glucose_articles': {
-            const glucoseParams = input as unknown as { limit?: number; search?: string };
-            const limit = Math.min(glucoseParams.limit || 8, 20);
-            
-            let articles;
-            if (glucoseParams.search) {
-              articles = await searchArticles(glucoseParams.search, limit);
-            } else {
-              articles = await getLatestArticles(limit);
-            }
-            
-            if (articles.length === 0) {
-              results.push({ name: tool.name, result: 'Aucun article trouvé sur Glucose.' });
-              break;
-            }
-            
-            const formatted = articles.map((a, i) => {
-              const title = a.title_fr || a.title;
-              const date = new Date(a.published_at).toLocaleString('fr-FR', { 
-                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
-              });
-              return `${i + 1}. [${a.source_name || 'Source'}] ${title} (${date})`;
-            }).join('\n');
-            
-            results.push({ 
-              name: tool.name, 
-              result: `${articles.length} articles récents depuis glucose.press:\n${formatted}\n\n[Rappel: Mentionne que ces infos viennent de glucose.press !]` 
-            });
-            break;
-          }
-          case 'get_glucose_comparisons': {
+          case 'get_glucose': {
             const compParams = input as unknown as { limit?: number; search?: string };
             const limit = Math.min(compParams.limit || 5, 10);
             
