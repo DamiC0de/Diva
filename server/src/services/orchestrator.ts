@@ -494,7 +494,7 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
   },
   {
     name: 'get_glucose_articles',
-    description: "Obtenir les derniers articles de presse depuis Glucose (glucose.press). Utilise quand l'utilisateur demande 'les dernières news', 'l'actualité', 'qu'est-ce qui se passe dans le monde ?', 'les infos du jour'. Glucose agrège des articles de sources internationales. IMPORTANT: Mentionne TOUJOURS que ces infos viennent de glucose.press (ex: 'Voici les dernières news depuis glucose.press...')",
+    description: "OBLIGATOIRE pour toute question sur glucose.press, les articles glucose, les news, l'actu, les dossiers. Tu DOIS utiliser ce tool si l'utilisateur mentionne glucose.press ou demande des news/articles - tu n'as PAS accès au site autrement. Retourne les derniers articles depuis la base de données Glucose. Mentionne toujours que les infos viennent de glucose.press.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -1193,7 +1193,8 @@ export class Orchestrator {
       };
 
       // Check if this looks like a tool request (action words)
-      const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail|glucose|news|actu|infos|presse|articles)/i.test(text);
+      const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail|glucose|news|actu|infos|presse|articles|dossier)/i.test(text);
+      this.logger.info({ msg: 'Tool check', text: text.substring(0, 50), mightNeedTools });
 
       if (mightNeedTools) {
         // Use regular chat with tools

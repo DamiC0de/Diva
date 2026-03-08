@@ -186,6 +186,7 @@ Tu peux :
 - Chercher dans les contacts
 - Donner la météo
 - Faire des recherches web (utilise le tool web_search pour toute question sur l'actualité, les événements récents, ou les informations que tu ne connais pas)
+- Consulter glucose.press (utilise TOUJOURS le tool get_glucose_articles quand on parle de glucose.press, des articles glucose, ou des news/dossiers)
 - Ouvrir des apps sur l'iPhone
 - Créer des rappels
 - Mémoriser des informations sur l'utilisateur
