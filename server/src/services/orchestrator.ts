@@ -1200,6 +1200,75 @@ export class Orchestrator {
       const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail|glucose|news|actu|infos|presse|articles|dossier|comparaison|synthèse|journée|aujourd'hui|hier|résume)/i.test(text);
       this.logger.info({ msg: 'Tool check', text: text.substring(0, 50), mightNeedTools });
 
+      // FORCE glucose tool when glucose.press is mentioned (bypass LLM choice)
+      const isGlucoseQuery = /glucose/i.test(text);
+      if (isGlucoseQuery) {
+        this.logger.info({ msg: 'Force glucose tool', text: text.substring(0, 50) });
+        
+        // Extract search term if any
+        const searchMatch = text.match(/(?:sur|about|concernant|iran|trump|ukraine|climat|pétrole|oil|israel|russia|chine|china)[\s:]*(\w+)/i);
+        const searchTerm = searchMatch?.[1] || undefined;
+        
+        // Check if user wants full content
+        const wantsFull = /(lis|lire|entier|complet|intégral|détail)/i.test(text);
+        
+        let comparisons;
+        if (searchTerm) {
+          comparisons = await searchComparisons(searchTerm, 5);
+        } else {
+          comparisons = await getLatestComparisons(5);
+        }
+        
+        if (comparisons.length > 0) {
+          let glucoseContext: string;
+          if (wantsFull && comparisons.length > 0) {
+            const article = comparisons[0];
+            const date = new Date(article.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+            glucoseContext = `[DONNÉES GLUCOSE.PRESS - Article complet]\n📰 ${article.title}\n(${article.sources_count} sources de ${article.countries_count} pays — ${date})\n\n${article.content || article.summary || 'Contenu non disponible'}`;
+          } else {
+            const formatted = comparisons.map((c, i) => {
+              const date = new Date(c.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short' });
+              return `${i + 1}. ${c.title} (${c.sources_count} sources, ${c.countries_count} pays) — ${date}${c.summary ? `\n   ${c.summary.substring(0, 150)}...` : ''}`;
+            }).join('\n\n');
+            glucoseContext = `[DONNÉES GLUCOSE.PRESS - ${comparisons.length} analyses récentes]\n\n${formatted}`;
+          }
+          
+          // Send to LLM with forced glucose context
+          const llmResult = await this.llm.chat({
+            userId: request.userId,
+            message: `L'utilisateur demande: "${text}"\n\nVoici les données de glucose.press que tu DOIS utiliser pour répondre:\n\n${glucoseContext}\n\nRésume ces informations de manière naturelle. Mentionne que ça vient de glucose.press.`,
+            history: sessionHistory.slice(0, -1),
+            memories,
+            userSettings,
+          });
+          metrics.llm = Date.now() - tLlm;
+          
+          if (request.cancelled) return;
+          
+          const fullText = llmResult.text;
+          sessionHistory.push({ role: 'assistant', content: fullText });
+          if (sessionHistory.length > 10) sessionHistory.splice(0, sessionHistory.length - 10);
+          saveMessage(request.userId, 'assistant', fullText).catch(() => {});
+          
+          // TTS
+          const tTts = Date.now();
+          this.setState(socket, request, RequestState.SYNTHESIZING);
+          const ttsResult = await this.synthesize(request.id, fullText);
+          if (ttsResult.audio_base64) {
+            this.sendEvent(socket, { type: 'tts_audio', audio: ttsResult.audio_base64, requestId: request.id });
+            this.setState(socket, request, RequestState.STREAMING_AUDIO);
+          }
+          metrics.tts = Date.now() - tTts;
+          
+          this.sendEvent(socket, { type: 'text_response', text: fullText, requestId: request.id, isPartial: false });
+          
+          metrics.total = Date.now() - t0;
+          this.logger.info({ msg: 'Glucose forced request completed', metrics });
+          this.setState(socket, request, RequestState.COMPLETED);
+          return;
+        }
+      }
+
       if (mightNeedTools) {
         // Use regular chat with tools
         let llmResult = await this.llm.chat({
