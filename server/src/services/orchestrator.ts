@@ -19,6 +19,7 @@ import * as TelegramUser from './telegramUser.js';
 import { InboundMessageSchema } from '../schemas/ws-messages.js';
 import { checkRateLimit, getRateLimitConfig } from '../lib/rateLimiter.js';
 import { loadHistory, saveMessage, pruneHistory } from '../lib/conversationHistory.js';
+import { getLatestArticles, searchArticles } from '../lib/glucose.js';
 
 // Request states
 export enum RequestState {
@@ -80,7 +81,12 @@ interface KeywordCheckMessage {
   format: string;
 }
 
-type ClientMessage = AudioChunkMessage | AudioEndMessage | TextMessage | CancelMessage | InterruptMessage | StartListeningMessage | StopListeningMessage | AudioMessage | PingMessage | KeywordCheckMessage;
+interface MemoryContextMessage {
+  type: 'memory_context';
+  memory: string;
+}
+
+type ClientMessage = AudioChunkMessage | AudioEndMessage | TextMessage | CancelMessage | InterruptMessage | StartListeningMessage | StopListeningMessage | AudioMessage | PingMessage | KeywordCheckMessage | MemoryContextMessage;
 
 // WebSocket message types (server → client)
 interface StateChangeEvent {
@@ -486,6 +492,23 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
       required: ['contact_name'],
     },
   },
+  {
+    name: 'get_glucose_articles',
+    description: "Obtenir les derniers articles de presse depuis Glucose (glucose.press). Utilise quand l'utilisateur demande 'les dernières news', 'l'actualité', 'qu'est-ce qui se passe dans le monde ?', 'les infos du jour'. Glucose agrège des articles de sources internationales (AFP, Reuters, NYT, etc.)",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: "Nombre d'articles à retourner (défaut 8, max 20)",
+        },
+        search: {
+          type: 'string',
+          description: "Mot-clé pour filtrer les articles (optionnel, ex: 'Ukraine', 'Trump', 'climat')",
+        },
+      },
+    },
+  },
 ];
 
 // open_app: Claude builds the URL scheme directly, no mapping needed
@@ -714,6 +737,7 @@ export class Orchestrator {
   private sessionHistory: Map<WebSocket, { role: 'user' | 'assistant'; content: string }[]> = new Map(); // in-memory conversation per WS session
   private userHistory: Map<string, { messages: { role: 'user' | 'assistant'; content: string }[]; lastActivity: number }> = new Map(); // in-memory cache, persisted to Supabase
   private historyLoadedUsers = new Set<string>(); // Track which users have had history loaded
+  private clientMemory = new Map<string, string>(); // userId → client-provided memory context
 
   constructor(
     logger: FastifyBaseLogger,
@@ -872,6 +896,11 @@ export class Orchestrator {
       case 'keyword_check':
         // US-040: Fast transcription for keyword detection during TTS
         this.handleKeywordCheck(socket, (message as KeywordCheckMessage).audio, (message as KeywordCheckMessage).format);
+        break;
+      case 'memory_context':
+        // Client-side persistent memory injection
+        this.clientMemory.set(userId, (message as MemoryContextMessage).memory);
+        this.logger.info({ msg: 'Client memory context received', userId, size: (message as MemoryContextMessage).memory.length });
         break;
     }
   }
@@ -1080,10 +1109,17 @@ export class Orchestrator {
         /^(qui es[- ]tu|t['']?es qui|c['']?est quoi|comment tu)/i.test(textLower);  // Identity questions
       
       // Parallel: memories (if needed) + user settings (cached)
-      const [memories, userSettings] = await Promise.all([
+      const [serverMemories, userSettings] = await Promise.all([
         isTrivialQuery ? Promise.resolve([]) : this.retrieveMemories(request.userId, text),
         this.getUserSettings(request.userId),
       ]);
+
+      // Merge server-side RAG memories with client-side persistent memory
+      const memories = [...serverMemories];
+      const clientMem = this.clientMemory.get(request.userId);
+      if (clientMem) {
+        memories.push(clientMem);
+      }
       metrics.prep = Date.now() - tPrep;
 
       sessionHistory.push({ role: 'user', content: text });
@@ -1157,7 +1193,7 @@ export class Orchestrator {
       };
 
       // Check if this looks like a tool request (action words)
-      const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail)/i.test(text);
+      const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail|glucose|news|actu|infos|presse|articles)/i.test(text);
 
       if (mightNeedTools) {
         // Use regular chat with tools
@@ -1594,6 +1630,36 @@ export class Orchestrator {
               (convParams.app as 'whatsapp' | 'imessage' | 'messenger') || 'whatsapp'
             );
             results.push({ name: tool.name, result: convResult });
+            break;
+          }
+          case 'get_glucose_articles': {
+            const glucoseParams = input as unknown as { limit?: number; search?: string };
+            const limit = Math.min(glucoseParams.limit || 8, 20);
+            
+            let articles;
+            if (glucoseParams.search) {
+              articles = await searchArticles(glucoseParams.search, limit);
+            } else {
+              articles = await getLatestArticles(limit);
+            }
+            
+            if (articles.length === 0) {
+              results.push({ name: tool.name, result: 'Aucun article trouvé sur Glucose.' });
+              break;
+            }
+            
+            const formatted = articles.map((a, i) => {
+              const title = a.title_fr || a.title;
+              const date = new Date(a.published_at).toLocaleString('fr-FR', { 
+                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
+              });
+              return `${i + 1}. [${a.source_name || 'Source'}] ${title} (${date})`;
+            }).join('\n');
+            
+            results.push({ 
+              name: tool.name, 
+              result: `${articles.length} articles récents sur Glucose:\n${formatted}` 
+            });
             break;
           }
           default:

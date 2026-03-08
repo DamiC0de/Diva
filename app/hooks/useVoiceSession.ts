@@ -15,6 +15,7 @@ import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { isCancelCommand } from '../lib/cancelDetection';
 import { addToHistory } from '../lib/historyStore';
+import { saveConversation, getMemoryContext, formatMemoryForPrompt } from '../lib/memoryService';
 import type { OrbState } from '../components/Orb/OrbView';
 import { ERROR_MESSAGES, type ErrorMessage } from '../constants/errors';
 import { OFFLINE_DEFAULT_MESSAGE } from '../lib/offlineResponses';
@@ -204,7 +205,18 @@ export function useVoiceSession({
     onOpen: () => {
       // Clear any stale audio from previous session
       clearAudioQueue();
-      
+
+      // Inject persistent memory context on connect
+      getMemoryContext()
+        .then((ctx) => {
+          const formatted = formatMemoryForPrompt(ctx);
+          if (formatted) {
+            send({ type: 'memory_context', memory: formatted });
+            console.log('[Memory] Context sent to server', { keyPoints: ctx.keyPoints.length, recent: ctx.recentConversations.length });
+          }
+        })
+        .catch((err) => console.warn('[Memory] Failed to load context:', err));
+
       // If auto-listen was active before disconnect, resume listening
       if (autoListenRef.current) {
         console.log('[WS] Reconnected, resuming auto-listen');
@@ -431,12 +443,14 @@ export function useVoiceSession({
         } else if (state === 'COMPLETED' || state === 'completed') {
           responseCompleteRef.current = true;
 
-          // US-008: Save to history
+          // US-008: Save to history + persistent memory
           if (lastUserMessageRef.current && lastAssistantMessageRef.current) {
-            addToHistory({
-              userText: lastUserMessageRef.current,
-              assistantText: lastAssistantMessageRef.current,
-            }).catch(err => console.warn('[History] Failed to save:', err));
+            const userMsg = lastUserMessageRef.current;
+            const assistantMsg = lastAssistantMessageRef.current;
+            addToHistory({ userText: userMsg, assistantText: assistantMsg })
+              .catch(err => console.warn('[History] Failed to save:', err));
+            saveConversation(userMsg, assistantMsg)
+              .catch(err => console.warn('[Memory] Failed to save:', err));
             lastUserMessageRef.current = null;
             lastAssistantMessageRef.current = null;
           }

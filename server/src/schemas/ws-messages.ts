@@ -56,6 +56,11 @@ export const KeywordCheckMessageSchema = z.object({
   format: z.string(),
 });
 
+export const MemoryContextMessageSchema = z.object({
+  type: z.literal('memory_context'),
+  memory: z.string().max(8000), // formatted memory string from client
+});
+
 // Union of all inbound messages
 export const InboundMessageSchema = z.discriminatedUnion('type', [
   AudioChunkMessageSchema,
@@ -68,6 +73,7 @@ export const InboundMessageSchema = z.discriminatedUnion('type', [
   AudioMessageSchema,
   PingMessageSchema,
   KeywordCheckMessageSchema,
+  MemoryContextMessageSchema,
 ]);
 
 // Type exports
@@ -81,4 +87,5 @@ export type StopListeningMessage = z.infer<typeof StopListeningMessageSchema>;
 export type AudioMessage = z.infer<typeof AudioMessageSchema>;
 export type PingMessage = z.infer<typeof PingMessageSchema>;
 export type KeywordCheckMessage = z.infer<typeof KeywordCheckMessageSchema>;
+export type MemoryContextMessage = z.infer<typeof MemoryContextMessageSchema>;
 export type InboundMessage = z.infer<typeof InboundMessageSchema>;
