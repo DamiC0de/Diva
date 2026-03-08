@@ -494,7 +494,7 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
   },
   {
     name: 'get_glucose',
-    description: "OBLIGATOIRE pour toute question sur glucose.press, l'actualité, les news, les dossiers. Retourne les analyses comparatives de glucose.press — des synthèses qui croisent les perspectives de médias du monde entier (AFP, Reuters, NYT, médias chinois, israéliens, russes, etc.). Utilise quand l'utilisateur demande 'les news', 'l'actu', 'un dossier', 'ce qui se passe sur [sujet]'. Mentionne TOUJOURS que ça vient de glucose.press !",
+    description: "UTILISE CE TOOL pour toute question sur: glucose.press, l'actualité, les news, les dossiers, les articles de la journée, les comparaisons. Tu as ACCÈS à la base de données glucose.press via ce tool. Ne dis JAMAIS 'je n'ai pas accès'. Retourne les analyses comparatives multi-sources. Mentionne glucose.press dans ta réponse.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -1197,7 +1197,7 @@ export class Orchestrator {
       };
 
       // Check if this looks like a tool request (action words)
-      const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail|glucose|news|actu|infos|presse|articles|dossier)/i.test(text);
+      const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail|glucose|news|actu|infos|presse|articles|dossier|comparaison|synthèse|journée|aujourd'hui|hier|résume)/i.test(text);
       this.logger.info({ msg: 'Tool check', text: text.substring(0, 50), mightNeedTools });
 
       if (mightNeedTools) {
