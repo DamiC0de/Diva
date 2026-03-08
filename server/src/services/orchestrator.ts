@@ -494,7 +494,7 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
   },
   {
     name: 'get_glucose_articles',
-    description: "Obtenir les derniers articles de presse depuis Glucose (glucose.press). Utilise quand l'utilisateur demande 'les dernières news', 'l'actualité', 'qu'est-ce qui se passe dans le monde ?', 'les infos du jour'. Glucose agrège des articles de sources internationales (AFP, Reuters, NYT, etc.)",
+    description: "Obtenir les derniers articles de presse depuis Glucose (glucose.press). Utilise quand l'utilisateur demande 'les dernières news', 'l'actualité', 'qu'est-ce qui se passe dans le monde ?', 'les infos du jour'. Glucose agrège des articles de sources internationales. IMPORTANT: Mentionne TOUJOURS que ces infos viennent de glucose.press (ex: 'Voici les dernières news depuis glucose.press...')",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -1658,7 +1658,7 @@ export class Orchestrator {
             
             results.push({ 
               name: tool.name, 
-              result: `${articles.length} articles récents sur Glucose:\n${formatted}` 
+              result: `${articles.length} articles récents depuis glucose.press:\n${formatted}\n\n[Rappel: Mentionne que ces infos viennent de glucose.press !]` 
             });
             break;
           }
