@@ -19,7 +19,7 @@ import * as TelegramUser from './telegramUser.js';
 import { InboundMessageSchema } from '../schemas/ws-messages.js';
 import { checkRateLimit, getRateLimitConfig } from '../lib/rateLimiter.js';
 import { loadHistory, saveMessage, pruneHistory } from '../lib/conversationHistory.js';
-import { getLatestArticles, searchArticles } from '../lib/glucose.js';
+import { getLatestArticles, searchArticles, getLatestComparisons, searchComparisons } from '../lib/glucose.js';
 
 // Request states
 export enum RequestState {
@@ -494,7 +494,7 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
   },
   {
     name: 'get_glucose_articles',
-    description: "OBLIGATOIRE pour toute question sur glucose.press, les articles glucose, les news, l'actu, les dossiers. Tu DOIS utiliser ce tool si l'utilisateur mentionne glucose.press ou demande des news/articles - tu n'as PAS accès au site autrement. Retourne les derniers articles depuis la base de données Glucose. Mentionne toujours que les infos viennent de glucose.press.",
+    description: "Obtenir les derniers ARTICLES bruts de presse depuis glucose.press. Utilise pour 'les dernières news', 'l'actu du jour'. Mentionne toujours glucose.press.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -505,6 +505,23 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
         search: {
           type: 'string',
           description: "Mot-clé pour filtrer les articles (optionnel, ex: 'Ukraine', 'Trump', 'climat')",
+        },
+      },
+    },
+  },
+  {
+    name: 'get_glucose_comparisons',
+    description: "OBLIGATOIRE pour les DOSSIERS APPROFONDIS, ANALYSES COMPARATIVES, SYNTHÈSES de glucose.press. Utilise quand l'utilisateur demande un 'dossier', une 'analyse comparative', une 'synthèse', ou un article approfondi avec plusieurs sources. Ces dossiers croisent les perspectives de multiples médias internationaux. Mentionne toujours glucose.press.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: "Nombre de dossiers à retourner (défaut 5, max 10)",
+        },
+        search: {
+          type: 'string',
+          description: "Mot-clé pour filtrer les dossiers (optionnel, ex: 'Iran', 'Trump', 'Ukraine')",
         },
       },
     },
@@ -1660,6 +1677,36 @@ export class Orchestrator {
             results.push({ 
               name: tool.name, 
               result: `${articles.length} articles récents depuis glucose.press:\n${formatted}\n\n[Rappel: Mentionne que ces infos viennent de glucose.press !]` 
+            });
+            break;
+          }
+          case 'get_glucose_comparisons': {
+            const compParams = input as unknown as { limit?: number; search?: string };
+            const limit = Math.min(compParams.limit || 5, 10);
+            
+            let comparisons;
+            if (compParams.search) {
+              comparisons = await searchComparisons(compParams.search, limit);
+            } else {
+              comparisons = await getLatestComparisons(limit);
+            }
+            
+            if (comparisons.length === 0) {
+              results.push({ name: tool.name, result: 'Aucun dossier approfondi trouvé sur Glucose.' });
+              break;
+            }
+            
+            const formatted = comparisons.map((c, i) => {
+              const date = new Date(c.created_at).toLocaleString('fr-FR', { 
+                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
+              });
+              const summary = c.summary ? `\n   Résumé: ${c.summary.substring(0, 200)}${c.summary.length > 200 ? '...' : ''}` : '';
+              return `${i + 1}. ${c.title} (${c.sources_count} sources, ${c.countries_count} pays) — ${date}${summary}`;
+            }).join('\n\n');
+            
+            results.push({ 
+              name: tool.name, 
+              result: `${comparisons.length} dossiers approfondis depuis glucose.press:\n\n${formatted}\n\n[Ces analyses comparatives croisent les perspectives de médias internationaux. Mentionne glucose.press !]` 
             });
             break;
           }

@@ -1,6 +1,6 @@
 /**
  * Glucose Integration
- * Query articles from glucose.press via Supabase
+ * Query articles and analyses from glucose.press via Supabase
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -31,6 +31,17 @@ export interface GlucoseArticle {
   published_at: string;
   url: string;
   summary_gemma?: string;
+}
+
+export interface GlucoseComparison {
+  id: string;
+  title: string;
+  summary?: string;
+  content?: string;
+  sources_count: number;
+  countries_count: number;
+  quality_score?: number;
+  created_at: string;
 }
 
 /**
@@ -112,6 +123,115 @@ export async function searchArticles(query: string, limit = 10): Promise<Glucose
     url: String(article.url || ''),
     summary_gemma: article.summary_gemma ? String(article.summary_gemma) : undefined,
   }));
+}
+
+/**
+ * Get latest comparative analyses / dossiers from Glucose
+ */
+export async function getLatestComparisons(limit = 5): Promise<GlucoseComparison[]> {
+  const client = getGlucoseClient();
+  if (!client) return [];
+  
+  const { data, error } = await client
+    .from('synthesized_comparisons')
+    .select(`
+      id,
+      title,
+      summary,
+      content,
+      sources_count,
+      countries_count,
+      quality_score,
+      created_at
+    `)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  
+  if (error) {
+    console.error('[Glucose] Comparisons query error:', error.message);
+    return [];
+  }
+  
+  return (data || []).map((comp: Record<string, unknown>) => ({
+    id: String(comp.id || ''),
+    title: String(comp.title || ''),
+    summary: comp.summary ? String(comp.summary) : undefined,
+    content: comp.content ? String(comp.content) : undefined,
+    sources_count: Number(comp.sources_count || 0),
+    countries_count: Number(comp.countries_count || 0),
+    quality_score: comp.quality_score ? Number(comp.quality_score) : undefined,
+    created_at: String(comp.created_at || ''),
+  }));
+}
+
+/**
+ * Search comparative analyses by keyword
+ */
+export async function searchComparisons(query: string, limit = 5): Promise<GlucoseComparison[]> {
+  const client = getGlucoseClient();
+  if (!client) return [];
+  
+  const { data, error } = await client
+    .from('synthesized_comparisons')
+    .select(`
+      id,
+      title,
+      summary,
+      content,
+      sources_count,
+      countries_count,
+      quality_score,
+      created_at
+    `)
+    .or(`title.ilike.%${query}%,summary.ilike.%${query}%,content.ilike.%${query}%`)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  
+  if (error) {
+    console.error('[Glucose] Comparisons search error:', error.message);
+    return [];
+  }
+  
+  return (data || []).map((comp: Record<string, unknown>) => ({
+    id: String(comp.id || ''),
+    title: String(comp.title || ''),
+    summary: comp.summary ? String(comp.summary) : undefined,
+    content: comp.content ? String(comp.content) : undefined,
+    sources_count: Number(comp.sources_count || 0),
+    countries_count: Number(comp.countries_count || 0),
+    quality_score: comp.quality_score ? Number(comp.quality_score) : undefined,
+    created_at: String(comp.created_at || ''),
+  }));
+}
+
+/**
+ * Get a specific comparison by ID with full content
+ */
+export async function getComparisonById(id: string): Promise<GlucoseComparison | null> {
+  const client = getGlucoseClient();
+  if (!client) return null;
+  
+  const { data, error } = await client
+    .from('synthesized_comparisons')
+    .select('*')
+    .eq('id', id)
+    .single();
+  
+  if (error || !data) {
+    console.error('[Glucose] Get comparison error:', error?.message);
+    return null;
+  }
+  
+  return {
+    id: String(data.id || ''),
+    title: String(data.title || ''),
+    summary: data.summary ? String(data.summary) : undefined,
+    content: data.content ? String(data.content) : undefined,
+    sources_count: Number(data.sources_count || 0),
+    countries_count: Number(data.countries_count || 0),
+    quality_score: data.quality_score ? Number(data.quality_score) : undefined,
+    created_at: String(data.created_at || ''),
+  };
 }
 
 /**
