@@ -240,7 +240,7 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
   },
   {
     name: 'web_search',
-    description: 'Rechercher une information sur le web',
+    description: "Rechercher une information sur le web. ATTENTION: N'utilise PAS ce tool pour glucose.press — utilise get_glucose à la place !",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -494,7 +494,7 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
   },
   {
     name: 'get_glucose',
-    description: "UTILISE CE TOOL pour toute question sur: glucose.press, l'actualité, les news, les dossiers, les articles de la journée, les comparaisons. Tu as ACCÈS à la base de données glucose.press via ce tool. Ne dis JAMAIS 'je n'ai pas accès'. Retourne les analyses comparatives multi-sources. Mentionne glucose.press dans ta réponse.",
+    description: "OBLIGATOIRE quand l'utilisateur mentionne 'glucose', 'glucose.press', ou demande des articles/news/dossiers. Ce tool accède directement à la base de données glucose.press (site d'analyses comparatives de médias). Utilise-le À LA PLACE de web_search pour tout ce qui concerne glucose. Retourne les synthèses multi-sources.",
     input_schema: {
       type: 'object' as const,
       properties: {
