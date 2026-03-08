@@ -506,6 +506,10 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
           type: 'string',
           description: "Mot-clé pour filtrer (optionnel, ex: 'Iran', 'Trump', 'Ukraine', 'climat')",
         },
+        full_content: {
+          type: 'boolean',
+          description: "Si true, retourne le contenu COMPLET du premier article trouvé. Utilise quand l'utilisateur veut LIRE un article en entier.",
+        },
       },
     },
   },
@@ -1634,7 +1638,7 @@ export class Orchestrator {
             break;
           }
           case 'get_glucose': {
-            const compParams = input as unknown as { limit?: number; search?: string };
+            const compParams = input as unknown as { limit?: number; search?: string; full_content?: boolean };
             const limit = Math.min(compParams.limit || 5, 10);
             
             let comparisons;
@@ -1646,6 +1650,20 @@ export class Orchestrator {
             
             if (comparisons.length === 0) {
               results.push({ name: tool.name, result: 'Aucun dossier approfondi trouvé sur Glucose.' });
+              break;
+            }
+            
+            // If full_content requested, return the complete content of the first match
+            if (compParams.full_content && comparisons.length > 0) {
+              const article = comparisons[0];
+              const date = new Date(article.created_at).toLocaleString('fr-FR', { 
+                day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' 
+              });
+              const fullContent = article.content || article.summary || 'Contenu non disponible';
+              results.push({ 
+                name: tool.name, 
+                result: `📰 **${article.title}**\n(${article.sources_count} sources de ${article.countries_count} pays — ${date})\n\n${fullContent}\n\n[Source: glucose.press — Analyse comparative multi-sources]` 
+              });
               break;
             }
             
