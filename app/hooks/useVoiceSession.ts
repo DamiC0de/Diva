@@ -153,6 +153,7 @@ export function useVoiceSession({
 
       if (autoListenRef.current && !autoListenScheduledRef.current) {
         autoListenScheduledRef.current = true;
+        // Longer delay to ensure audio playback is fully complete
         setTimeout(() => {
           autoListenScheduledRef.current = false;
           if (autoListenRef.current) {
@@ -160,7 +161,7 @@ export function useVoiceSession({
           } else {
             setOrbState('idle');
           }
-        }, 300);
+        }, 800); // Increased from 300ms to 800ms
       } else if (!autoListenRef.current) {
         setOrbState('idle');
       }
@@ -458,6 +459,7 @@ export function useVoiceSession({
           if (!isPlayingRef.current && audioQueueRef.current.length === 0) {
             if (autoListenRef.current && !autoListenScheduledRef.current) {
               autoListenScheduledRef.current = true;
+              // Longer delay to ensure audio system is ready for recording
               setTimeout(() => {
                 autoListenScheduledRef.current = false;
                 if (autoListenRef.current) {
@@ -465,7 +467,7 @@ export function useVoiceSession({
                 } else {
                   setOrbState('idle');
                 }
-              }, 300);
+              }, 800); // Increased from 300ms to 800ms
             } else if (!autoListenRef.current) {
               setOrbState('idle');
             }
