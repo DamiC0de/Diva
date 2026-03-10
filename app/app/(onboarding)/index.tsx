@@ -1,6 +1,6 @@
 /**
- * EL-029 — Onboarding Flow — 2026 Design
- * Cloud Dancer + Mermaidcore palette, dark/light adaptive
+ * DIVA Onboarding — 2026 Design
+ * Luminous Intelligence palette, modern transitions
  */
 import React, { useRef, useState } from 'react';
 import {
@@ -8,6 +8,7 @@ import {
   View, FlatList, Dimensions, TextInput, TouchableOpacity,
   StyleSheet, Text,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Audio } from 'expo-av';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -62,66 +63,83 @@ export default function OnboardingScreen() {
   // --- Page 1: Welcome ---
   const WelcomePage = (
     <View key="welcome" style={s.page}>
-      <View style={{ flex: 0.6 }} />
-      <View style={{ alignItems: 'center' }}>
-        <Image
-          source={require('../../assets/images/diva-logo.png')}
-          style={s.logo}
-          resizeMode="contain"
-        />
-        <Text style={s.brand}>diva</Text>
-        <Text style={s.tagline}>Ton assistant vocal{'\n'}intelligent</Text>
+      {/* Hero section with mascot */}
+      <View style={s.heroSection}>
+        <View style={s.mascotContainer}>
+          <Image
+            source={require('../../assets/images/diva-logo.png')}
+            style={s.mascot}
+            resizeMode="contain"
+          />
+        </View>
+        <Text style={s.brandName}>diva</Text>
+        <Text style={s.tagline}>Ton compagnon IA{'\n'}toujours à l&apos;écoute</Text>
       </View>
-      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-        <Text style={s.desc}>
-          Parle naturellement. Diva comprend ta voix, exécute tes demandes et s'adapte à toi.
+
+      {/* Bottom section */}
+      <View style={s.bottomSection}>
+        <Text style={s.description}>
+          Parle naturellement. Diva comprend, mémorise et s&apos;adapte à toi au fil du temps.
         </Text>
-        <TouchableOpacity style={s.btn} onPress={goNext} activeOpacity={0.85}>
-          <Text style={s.btnText}>Commencer</Text>
+        <TouchableOpacity style={s.primaryBtn} onPress={goNext} activeOpacity={0.85}>
+          <LinearGradient
+            colors={[theme.cyan, theme.indigo]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={s.btnGradient}
+          >
+            <Text style={s.primaryBtnText}>Commencer</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     </View>
   );
 
-  // --- Page 2: Micro ---
+  // --- Page 2: Microphone ---
   const MicroPage = (
     <View key="micro" style={s.page}>
-      <View style={s.hero}>
-        <View style={[s.iconBadge, { backgroundColor: theme.primarySoft }]}>  
-          <View style={[s.micDot, { backgroundColor: theme.primary }]} />
-          <View style={[s.micBar, { backgroundColor: theme.primary }]} />
-          <View style={[s.micBase, { backgroundColor: theme.primary }]} />
+      <View style={s.centerSection}>
+        {/* Mic icon */}
+        <View style={[s.iconCircle, { backgroundColor: theme.primarySoft }]}>
+          <Text style={s.iconEmoji}>🎙️</Text>
         </View>
-        <Text style={s.title}>Accès au micro</Text>
-        <Text style={s.subtitle}>
-          Pour que la magie opère, Diva a besoin d'entendre ta voix.
+        <Text style={s.pageTitle}>Accès au micro</Text>
+        <Text style={s.pageSubtitle}>
+          Pour que Diva puisse t&apos;entendre, autorise l&apos;accès au microphone.
         </Text>
       </View>
-      <View style={s.bottom}>
+      <View style={s.bottomSection}>
         <TouchableOpacity
-          style={s.btn}
+          style={s.primaryBtn}
           onPress={async () => { await Audio.requestPermissionsAsync(); goNext(); }}
           activeOpacity={0.85}
         >
-          <Text style={s.btnText}>Autoriser</Text>
+          <LinearGradient
+            colors={[theme.cyan, theme.indigo]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={s.btnGradient}
+          >
+            <Text style={s.primaryBtnText}>Autoriser</Text>
+          </LinearGradient>
         </TouchableOpacity>
-        <TouchableOpacity onPress={goNext} style={s.skipWrap}>
-          <Text style={s.skip}>Plus tard</Text>
+        <TouchableOpacity onPress={goNext} style={s.skipBtn}>
+          <Text style={s.skipText}>Plus tard</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
-  // --- Page 3: Perso ---
+  // --- Page 3: Personalization ---
   const PersoPage = (
     <View key="perso" style={s.page}>
-      <View style={s.form}>
-        <Text style={s.title}>Fais-le tien</Text>
+      <View style={s.formSection}>
+        <Text style={s.pageTitle}>Personnalise Diva</Text>
 
-        <Text style={s.label}>PRÉNOM</Text>
+        <Text style={s.inputLabel}>TON PRÉNOM</Text>
         <TextInput
-          style={s.input}
-          placeholder="Ton prénom"
+          style={[s.input, { borderColor: theme.inputBorder, color: theme.text }]}
+          placeholder="Comment tu t'appelles ?"
           placeholderTextColor={theme.textMuted}
           value={data.name}
           onChangeText={(t) => setData(d => ({ ...d, name: t }))}
@@ -129,41 +147,48 @@ export default function OnboardingScreen() {
           autoCorrect={false}
         />
 
-        <Text style={s.label}>TUTOIEMENT</Text>
-        <View style={s.chips}>
+        <Text style={s.inputLabel}>TUTOIEMENT</Text>
+        <View style={s.chipRow}>
           {(['tu', 'vous'] as const).map(v => (
             <TouchableOpacity
               key={v}
-              style={[s.chip, data.formality === v && s.chipOn]}
+              style={[s.chip, data.formality === v && { backgroundColor: theme.primarySoft, borderColor: theme.primary }]}
               onPress={() => setData(d => ({ ...d, formality: v }))}
             >
-              <Text style={[s.chipText, data.formality === v && s.chipTextOn]}>
-                {v === 'tu' ? 'Tu' : 'Vous'}
+              <Text style={[s.chipText, data.formality === v && { color: theme.primary }]}>
+                {v === 'tu' ? 'Tutoie-moi' : 'Vouvoyez-moi'}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <Text style={s.label}>TON</Text>
-        <View style={s.chips}>
+        <Text style={s.inputLabel}>TON DE VOIX</Text>
+        <View style={s.chipRow}>
           {[
-            { v: 'friendly', l: 'Amical' },
-            { v: 'professional', l: 'Pro' },
-            { v: 'casual', l: 'Décontracté' },
+            { v: 'friendly', l: '😊 Amical', e: '' },
+            { v: 'professional', l: '💼 Pro', e: '' },
+            { v: 'casual', l: '😎 Décontracté', e: '' },
           ].map(({ v, l }) => (
             <TouchableOpacity
               key={v}
-              style={[s.chip, data.tone === v && s.chipOn]}
+              style={[s.chip, data.tone === v && { backgroundColor: theme.primarySoft, borderColor: theme.primary }]}
               onPress={() => setData(d => ({ ...d, tone: v as OnboardingData['tone'] }))}
             >
-              <Text style={[s.chipText, data.tone === v && s.chipTextOn]}>{l}</Text>
+              <Text style={[s.chipText, data.tone === v && { color: theme.primary }]}>{l}</Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
-      <View style={s.bottom}>
-        <TouchableOpacity style={s.btn} onPress={goNext} activeOpacity={0.85}>
-          <Text style={s.btnText}>Continuer</Text>
+      <View style={s.bottomSection}>
+        <TouchableOpacity style={s.primaryBtn} onPress={goNext} activeOpacity={0.85}>
+          <LinearGradient
+            colors={[theme.cyan, theme.indigo]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={s.btnGradient}
+          >
+            <Text style={s.primaryBtnText}>Continuer</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     </View>
@@ -172,30 +197,45 @@ export default function OnboardingScreen() {
   // --- Page 4: Ready ---
   const ReadyPage = (
     <View key="ready" style={s.page}>
-      <View style={s.hero}>
+      <View style={s.centerSection}>
         <Image
           source={require('../../assets/images/diva-logo.png')}
-          style={s.logo}
+          style={s.mascotSmall}
           resizeMode="contain"
         />
-        <Text style={s.title}>Tout est prêt{data.name ? `, ${data.name}` : ''}</Text>
-        <Text style={s.subtitle}>
-          Appuie sur l'orbe et parle.{'\n'}Diva fait le reste.
+        <Text style={s.pageTitle}>
+          {data.name ? `Enchanté${data.formality === 'vous' ? '' : 'e'}, ${data.name} !` : 'Tout est prêt !'}
         </Text>
-      </View>
-      <View style={s.bottom}>
-        <View style={s.features}>
-          {['Météo, musique, recherche', 'Mémoire contextuelle', 'Réponse vocale naturelle'].map((f, i) => (
+        <Text style={s.pageSubtitle}>
+          Appuie sur l&apos;orbe et parle.{'\n'}Diva s&apos;occupe du reste.
+        </Text>
+
+        {/* Features */}
+        <View style={s.featureList}>
+          {[
+            { icon: '🎤', text: 'Comprend ta voix naturellement' },
+            { icon: '🧠', text: 'Se souvient de tes préférences' },
+            { icon: '💬', text: 'Répond comme un ami' },
+          ].map((f, i) => (
             <View key={i} style={s.featureRow}>
-              <View style={[s.featureCheck, { backgroundColor: theme.tealSoft }]}>
-                <Text style={[s.featureCheckText, { color: theme.teal }]}>✓</Text>
+              <View style={[s.featureIcon, { backgroundColor: theme.cyanSoft }]}>
+                <Text style={s.featureIconText}>{f.icon}</Text>
               </View>
-              <Text style={s.featureText}>{f}</Text>
+              <Text style={[s.featureText, { color: theme.textSecondary }]}>{f.text}</Text>
             </View>
           ))}
         </View>
-        <TouchableOpacity style={[s.btn, { backgroundColor: theme.teal }]} onPress={finish} activeOpacity={0.85}>
-          <Text style={s.btnText}>Commencer à parler</Text>
+      </View>
+      <View style={s.bottomSection}>
+        <TouchableOpacity style={s.primaryBtn} onPress={finish} activeOpacity={0.85}>
+          <LinearGradient
+            colors={[theme.indigo, theme.violet]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={s.btnGradient}
+          >
+            <Text style={s.primaryBtnText}>Rencontrer Diva</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     </View>
@@ -204,25 +244,35 @@ export default function OnboardingScreen() {
   const pages = [WelcomePage, MicroPage, PersoPage, ReadyPage];
 
   return (
-    <View style={[{ flex: 1, backgroundColor: theme.bg }, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <FlatList
-        ref={flatListRef}
-        data={pages}
-        renderItem={({ item }) => item}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        scrollEnabled={false}
-        keyExtractor={(_, i) => String(i)}
+    <View style={{ flex: 1 }}>
+      <LinearGradient
+        colors={[theme.bgGradientStart, theme.bgGradientEnd]}
+        style={StyleSheet.absoluteFill}
       />
-      <View style={s.dots}>
-        {[0, 1, 2, 3].map(i => (
-          <View key={i} style={[
-            s.dot,
-            { backgroundColor: currentPage === i ? theme.primary : theme.divider },
-            currentPage === i && s.dotOn,
-          ]} />
-        ))}
+      <View style={[{ flex: 1, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <FlatList
+          ref={flatListRef}
+          data={pages}
+          renderItem={({ item }) => item}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEnabled={false}
+          keyExtractor={(_, i) => String(i)}
+        />
+        {/* Dots indicator */}
+        <View style={s.dotsRow}>
+          {[0, 1, 2, 3].map(i => (
+            <View
+              key={i}
+              style={[
+                s.dot,
+                { backgroundColor: currentPage === i ? theme.primary : theme.divider },
+                currentPage === i && s.dotActive,
+              ]}
+            />
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -230,56 +280,201 @@ export default function OnboardingScreen() {
 
 function makeStyles(t: Theme) {
   return StyleSheet.create({
-    page: { width, flex: 1, justifyContent: 'space-between', paddingHorizontal: 28 },
-    hero: { flex: 3, justifyContent: 'center', alignItems: 'center' },
-    form: { flex: 1, justifyContent: 'center', paddingTop: 20 },
-    bottom: { flex: 2, justifyContent: 'flex-end', paddingBottom: 48 },
+    page: {
+      width,
+      flex: 1,
+      paddingHorizontal: 28,
+    },
+    
+    // Hero (welcome page)
+    heroSection: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingTop: 40,
+    },
+    mascotContainer: {
+      marginBottom: 20,
+    },
+    mascot: {
+      width: 160,
+      height: 160,
+    },
+    brandName: {
+      fontSize: 48,
+      fontWeight: '200',
+      color: t.text,
+      letterSpacing: 12,
+      marginBottom: 12,
+    },
+    tagline: {
+      fontSize: 20,
+      fontWeight: '300',
+      color: t.textSecondary,
+      textAlign: 'center',
+      lineHeight: 28,
+    },
 
-    // Orb
-    logo: { width: 140, height: 140, marginBottom: 16, alignSelf: 'center' as const },
-    orbWrap: { width: 130, height: 130, justifyContent: 'center', alignItems: 'center', marginBottom: 36 },
-    orbGlow: { position: 'absolute', width: 130, height: 130, borderRadius: 65, opacity: 0.12 },
-    orbCore: { width: 56, height: 56, borderRadius: 28 },
-    orbRing: { position: 'absolute', width: 90, height: 90, borderRadius: 45, borderWidth: 1.5, opacity: 0.25 },
+    // Center section (other pages)
+    centerSection: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingTop: 40,
+    },
+    iconCircle: {
+      width: 100,
+      height: 100,
+      borderRadius: 50,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 28,
+    },
+    iconEmoji: {
+      fontSize: 44,
+    },
+    pageTitle: {
+      fontSize: 28,
+      fontWeight: '600',
+      color: t.text,
+      textAlign: 'center',
+      marginBottom: 12,
+    },
+    pageSubtitle: {
+      fontSize: 17,
+      color: t.textSecondary,
+      textAlign: 'center',
+      lineHeight: 24,
+      maxWidth: 300,
+    },
 
-    // Mic icon (pure shapes, no emoji)
-    iconBadge: { width: 80, height: 80, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 28 },
-    micDot: { width: 20, height: 28, borderRadius: 10, marginBottom: 2 },
-    micBar: { width: 2, height: 8 },
-    micBase: { width: 14, height: 2, borderRadius: 1, marginTop: 1 },
+    // Bottom section
+    bottomSection: {
+      paddingBottom: 48,
+    },
+    description: {
+      fontSize: 16,
+      color: t.textMuted,
+      textAlign: 'center',
+      lineHeight: 24,
+      marginBottom: 28,
+    },
 
-    // Typography
-    brand: { fontSize: 44, fontWeight: '200', color: t.text, letterSpacing: 10, marginBottom: 12 },
-    tagline: { fontSize: 19, fontWeight: '300', color: t.textSecondary, textAlign: 'center', lineHeight: 27 },
-    title: { fontSize: 26, fontWeight: '600', color: t.text, textAlign: 'center', marginBottom: 10 },
-    subtitle: { fontSize: 16, color: t.textSecondary, textAlign: 'center', lineHeight: 24, maxWidth: 280 },
-    desc: { fontSize: 15, color: t.textMuted, textAlign: 'center', lineHeight: 22, marginBottom: 24 },
-
-    // Button
-    btn: { backgroundColor: t.primary, paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
-    btnText: { color: '#FFF', fontSize: 17, fontWeight: '600' },
-    skipWrap: { paddingVertical: 14, alignItems: 'center' },
-    skip: { color: t.textMuted, fontSize: 15 },
+    // Buttons
+    primaryBtn: {
+      borderRadius: 16,
+      overflow: 'hidden',
+      shadowColor: t.indigo,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    btnGradient: {
+      paddingVertical: 18,
+      alignItems: 'center',
+    },
+    primaryBtnText: {
+      color: '#FFFFFF',
+      fontSize: 18,
+      fontWeight: '600',
+    },
+    skipBtn: {
+      paddingVertical: 16,
+      alignItems: 'center',
+    },
+    skipText: {
+      color: t.textMuted,
+      fontSize: 16,
+    },
 
     // Form
-    label: { fontSize: 12, fontWeight: '600', color: t.textMuted, letterSpacing: 1.5, marginBottom: 8, marginTop: 22 },
-    input: { backgroundColor: t.inputBg, borderWidth: 1, borderColor: t.inputBorder, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 17, color: t.text },
-    chips: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
-    chip: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 10, backgroundColor: t.inputBg, borderWidth: 1, borderColor: t.inputBorder },
-    chipOn: { backgroundColor: t.primarySoft, borderColor: t.primary },
-    chipText: { fontSize: 15, color: t.textSecondary, fontWeight: '500' },
-    chipTextOn: { color: t.primaryLight },
+    formSection: {
+      flex: 1,
+      justifyContent: 'center',
+      paddingTop: 20,
+    },
+    inputLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: t.textMuted,
+      letterSpacing: 1.5,
+      marginBottom: 10,
+      marginTop: 24,
+    },
+    input: {
+      backgroundColor: t.inputBg,
+      borderWidth: 1.5,
+      borderRadius: 14,
+      paddingHorizontal: 18,
+      paddingVertical: 16,
+      fontSize: 17,
+    },
+    chipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+    },
+    chip: {
+      paddingVertical: 12,
+      paddingHorizontal: 18,
+      borderRadius: 12,
+      backgroundColor: t.inputBg,
+      borderWidth: 1.5,
+      borderColor: t.inputBorder,
+    },
+    chipText: {
+      fontSize: 15,
+      color: t.textSecondary,
+      fontWeight: '500',
+    },
 
     // Features
-    features: { marginBottom: 28 },
-    featureRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-    featureCheck: { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
-    featureCheckText: { fontSize: 14, fontWeight: '700' },
-    featureText: { fontSize: 15, color: t.textSecondary },
+    featureList: {
+      marginTop: 36,
+      gap: 16,
+    },
+    featureRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    featureIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 16,
+    },
+    featureIconText: {
+      fontSize: 20,
+    },
+    featureText: {
+      fontSize: 16,
+      fontWeight: '500',
+    },
+
+    // Small mascot
+    mascotSmall: {
+      width: 100,
+      height: 100,
+      marginBottom: 20,
+    },
 
     // Dots
-    dots: { flexDirection: 'row', justifyContent: 'center', paddingBottom: 16, gap: 6 },
-    dot: { width: 6, height: 6, borderRadius: 3 },
-    dotOn: { width: 20 },
+    dotsRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      paddingBottom: 16,
+      gap: 8,
+    },
+    dot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    dotActive: {
+      width: 24,
+    },
   });
 }

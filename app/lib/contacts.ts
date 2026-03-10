@@ -3,7 +3,7 @@
  * On-device contact search (never sent to server in bulk)
  */
 import * as Contacts from 'expo-contacts';
-import { Linking, Alert } from 'react-native';
+import { Linking } from 'react-native';
 
 export interface ContactResult {
   id: string;

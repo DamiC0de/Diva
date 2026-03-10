@@ -12,6 +12,27 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { FastifyBaseLogger } from 'fastify';
 
+// Retry configuration for overloaded errors
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  baseDelayMs: 1000,
+  maxDelayMs: 10000,
+  retryableCodes: [529, 503, 502], // Overloaded, Service Unavailable
+};
+
+/** Sleep helper */
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/** Check if error is retryable */
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof Anthropic.APIError) {
+    return RETRY_CONFIG.retryableCodes.includes(error.status);
+  }
+  // Check for overloaded_error in message
+  const msg = String(error);
+  return msg.includes('overloaded') || msg.includes('529') || msg.includes('503');
+}
+
 // Types
 interface Message {
   role: 'user' | 'assistant';
@@ -165,6 +186,7 @@ Tu peux :
 - Chercher dans les contacts
 - Donner la météo
 - Faire des recherches web (utilise le tool web_search pour toute question sur l'actualité, les événements récents, ou les informations que tu ne connais pas)
+- Consulter glucose.press via le tool get_glucose (TU DOIS TOUJOURS L'UTILISER pour glucose.press, l'actu, les news, les dossiers, les articles, les comparaisons - ne réponds JAMAIS "je n'ai pas accès" sur ces sujets)
 - Ouvrir des apps sur l'iPhone
 - Créer des rappels
 - Mémoriser des informations sur l'utilisateur
@@ -175,6 +197,7 @@ Tu peux :
 - Pour les actions sensibles (envoyer un email, supprimer un RDV), demande confirmation
 - OBLIGATOIRE : Pour TOUTE question sur des dates, événements, résultats sportifs, actualités, ou informations récentes → utilise TOUJOURS web_search AVANT de répondre. Ne réponds JAMAIS de mémoire sur ces sujets.
 - Ne dis JAMAIS que tes données s'arrêtent à une certaine date — utilise web_search pour vérifier
+- Ne dis JAMAIS "je n'ai pas accès à glucose.press" ou "je ne peux pas consulter le site" — tu AS accès via le tool get_glucose, UTILISE-LE
 - En cas de doute, utilise web_search. Mieux vaut chercher pour rien que répondre une info fausse.
 - Tes réponses seront lues à voix haute par un TTS, donc reste naturel et conversationnel
 - N'utilise JAMAIS d'emojis — ils sont prononcés littéralement par le TTS et ça sonne mal
@@ -219,7 +242,7 @@ Tu peux :
     // Build messages array (last 20)
     const messages: Anthropic.MessageParam[] = [];
 
-    const recentHistory = history.slice(-20);
+    const recentHistory = history.slice(-10);
     for (const msg of recentHistory) {
       messages.push({ role: msg.role, content: msg.content });
     }
@@ -228,20 +251,32 @@ Tu peux :
     // Build system prompt
     const systemBlocks = this.buildSystemPrompt(userSettings, memories);
 
-    try {
-      const response = await this.client!.messages.create({
-        model: this.config.model,
-        max_tokens: this.config.maxTokens,
-        temperature: this.config.temperature,
-        system: systemBlocks,
-        messages,
-        ...(tools && tools.length > 0 ? { tools } : {}),
-      });
+    // Retry loop with exponential backoff for overloaded errors
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          const delay = Math.min(
+            RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt - 1),
+            RETRY_CONFIG.maxDelayMs
+          );
+          this.logger.warn({ msg: 'LLM retry', attempt, delay, maxRetries: RETRY_CONFIG.maxRetries });
+          await sleep(delay);
+        }
 
-      // Extract text content
-      const textBlocks = response.content.filter(
-        (block): block is Anthropic.TextBlock => block.type === 'text',
-      );
+        const response = await this.client!.messages.create({
+          model: this.config.model,
+          max_tokens: this.config.maxTokens,
+          temperature: this.config.temperature,
+          system: systemBlocks,
+          messages,
+          ...(tools && tools.length > 0 ? { tools } : {}),
+        });
+
+        // Extract text content
+        const textBlocks = response.content.filter(
+          (block): block is Anthropic.TextBlock => block.type === 'text',
+        );
       const text = textBlocks.map((b) => b.text).join('');
 
       // Extract tool use
@@ -279,11 +314,18 @@ Tu peux :
         hasToolUse: toolUseBlocks.length > 0,
       });
 
-      return result;
-    } catch (error) {
-      this.logger.error({ msg: 'LLM error', error });
-      throw error;
+        return result;
+      } catch (error) {
+        lastError = error;
+        if (!isRetryableError(error) || attempt === RETRY_CONFIG.maxRetries) {
+          this.logger.error({ msg: 'LLM error', error, attempt, willRetry: false });
+          throw error;
+        }
+        this.logger.warn({ msg: 'LLM retryable error', error: String(error), attempt, willRetry: true });
+      }
     }
+    // Should not reach here, but just in case
+    throw lastError;
   }
 
   /**
@@ -293,7 +335,7 @@ Tu peux :
     const { message, history = [], memories, userSettings } = options;
 
     const messages: Anthropic.MessageParam[] = [];
-    const recentHistory = history.slice(-20);
+    const recentHistory = history.slice(-10);
     for (const msg of recentHistory) {
       messages.push({ role: msg.role, content: msg.content });
     }

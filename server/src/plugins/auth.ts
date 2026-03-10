@@ -6,13 +6,6 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fp from 'fastify-plugin';
 import { getSupabase } from '../lib/supabase.js';
 
-interface JWTPayload {
-  sub: string;
-  email?: string;
-  role?: string;
-  exp?: number;
-}
-
 declare module 'fastify' {
   interface FastifyRequest {
     userId?: string;
@@ -35,38 +28,19 @@ async function authPlugin(app: FastifyInstance): Promise<void> {
     const token = authHeader.slice(7);
 
     try {
-      // Verify token via Supabase Auth
+      // Verify token via Supabase Auth - NO FALLBACK
       const db = getSupabase();
       const { data, error } = await db.auth.getUser(token);
 
       if (error || !data.user) {
-        // Fallback: decode JWT manually (dev mode)
-        const parts = token.split('.');
-        if (parts.length !== 3) throw new Error('Invalid JWT');
-
-        const payload = JSON.parse(
-          Buffer.from(parts[1]!, 'base64url').toString('utf-8'),
-        ) as JWTPayload;
-
-        if (payload.exp && payload.exp * 1000 < Date.now()) {
-          reply.code(401).send({ error: 'Token expired' });
-          return;
-        }
-
-        if (!payload.sub) {
-          reply.code(401).send({ error: 'Invalid token: missing sub' });
-          return;
-        }
-
-        request.userId = payload.sub;
-        request.userEmail = payload.email;
+        reply.code(401).send({ error: 'Invalid or expired token' });
         return;
       }
 
       request.userId = data.user.id;
       request.userEmail = data.user.email;
     } catch {
-      reply.code(401).send({ error: 'Invalid token' });
+      reply.code(401).send({ error: 'Token verification failed' });
     }
   });
 }

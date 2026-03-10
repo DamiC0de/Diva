@@ -3,11 +3,9 @@
  * Shows tooltips highlighting UI elements on first use
  */
 import React, { useState } from 'react';
-import { View, TouchableOpacity, Dimensions, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Text } from './ui/Text';
 import { colors } from '../constants/colors';
-
-const { width, height } = Dimensions.get('window');
 
 interface TutorialStep {
   title: string;
@@ -74,7 +72,7 @@ export function TutorialOverlay({ userName, onComplete }: Props) {
             </TouchableOpacity>
           ))}
           <TouchableOpacity style={styles.doneBtn} onPress={onComplete}>
-            <Text style={styles.doneBtnText}>C'est parti ! 🚀</Text>
+            <Text style={styles.doneBtnText}>C&apos;est parti ! 🚀</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -118,7 +116,7 @@ const styles = StyleSheet.create({
   suggestionsCard: { backgroundColor: '#fff', borderRadius: 20, padding: 28, marginHorizontal: 24, alignItems: 'center' },
   suggestTitle: { fontSize: 24, fontWeight: '700', marginBottom: 8 },
   suggestSubtitle: { fontSize: 15, color: '#666', marginBottom: 16 },
-  suggestionChip: { backgroundColor: colors.background, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, width: '100%', marginBottom: 8 },
+  suggestionChip: { backgroundColor: '#FAFAF9', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, width: '100%', marginBottom: 8 },
   suggestionText: { fontSize: 15, color: '#1a1a1a' },
   doneBtn: { backgroundColor: colors.primary, paddingVertical: 14, paddingHorizontal: 32, borderRadius: 12, marginTop: 12 },
   doneBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },

@@ -49,9 +49,9 @@ export default function LoginScreen() {
           style={styles.logo}
           resizeMode="contain"
         />
-        <Text variant="hero" style={[styles.title, { color: theme.text }]}>diva</Text>
+        <Text variant="hero" style={{ ...styles.title, color: theme.text }}>diva</Text>
         <Text variant="body" color={theme.textSecondary} style={styles.subtitle}>
-          Ton assistant vocal intelligent
+          Ton compagnon IA
         </Text>
       </View>
 

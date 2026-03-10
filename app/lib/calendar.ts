@@ -50,8 +50,8 @@ export async function getEvents(daysAhead = 14, daysBehind = 1): Promise<Calenda
     return events.map(e => ({
       id: e.id,
       title: e.title,
-      startDate: e.startDate,
-      endDate: e.endDate,
+      startDate: typeof e.startDate === 'string' ? e.startDate : e.startDate.toISOString(),
+      endDate: typeof e.endDate === 'string' ? e.endDate : e.endDate.toISOString(),
       location: e.location || undefined,
       notes: e.notes || undefined,
       calendarName: calendarMap.get(e.calendarId) || undefined,
@@ -114,7 +114,7 @@ export async function createEvent(input: CreateEventInput): Promise<{ success: b
       endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
     }
 
-    const eventDetails: Calendar.Event = {
+    const eventDetails: Partial<Calendar.Event> = {
       title: input.title,
       startDate,
       endDate,
@@ -125,7 +125,7 @@ export async function createEvent(input: CreateEventInput): Promise<{ success: b
     if (input.location) eventDetails.location = input.location;
     if (input.notes) eventDetails.notes = input.notes;
 
-    const eventId = await Calendar.createEventAsync(calendarId, eventDetails);
+    const eventId = await Calendar.createEventAsync(calendarId, eventDetails as Calendar.Event);
 
     const dateStr = startDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     const timeStr = input.all_day ? '' : ` à ${startDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;

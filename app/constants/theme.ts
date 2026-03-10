@@ -1,109 +1,180 @@
 /**
- * Elio Design System — 2026 Trends
+ * DIVA Design System — 2026
  * 
- * Approach: "Mermaidcore meets Cloud Dancer"
- * - Light: Cloud Dancer whites + soft teal accents
- * - Dark: Deep navy/charcoal + iridescent violet-teal gradient accent
- * - Both: Warm naturals, no harsh contrasts
+ * Palette "Luminous Intelligence" from UX trends PDF
+ * - Dark-first with warm accents
+ * - Aligned with mascot logo gradient (cyan → indigo → violet)
+ * - Neo-minimalism: soft blacks, warm whites
  */
 import { useColorScheme } from 'react-native';
 
-// Shared accent palette
-const accent = {
-  primary: '#6366F1',       // Indigo — modern, trustworthy
-  primaryLight: '#818CF8',
-  primarySoft: 'rgba(99, 102, 241, 0.12)',
-  teal: '#2DD4BF',          // Teal — mermaidcore iridescent
-  tealSoft: 'rgba(45, 212, 191, 0.12)',
-  coral: '#F472B6',         // Soft pink — dopamine pop
-  success: '#34D399',
-  error: '#F87171',
-  warning: '#FBBF24',
+// Brand colors — aligned with mascot logo
+const brand = {
+  // Logo gradient colors
+  cyan: '#7DD3E8',          // Top of logo flame
+  indigo: '#5856D6',        // Core brand color (Apple system indigo)
+  indigoLight: '#7B78E8',   // Lighter for dark mode
+  violet: '#4A4B91',        // Base of logo flame
+  
+  // Secondary accents
+  teal: '#20808D',
+  tealLight: '#2CB5C5',
+  peach: '#DE7356',         // Warm accent
+  peachLight: '#E8886B',
+};
+
+// Functional colors
+const functional = {
+  success: '#34C759',
+  successDark: '#30D158',
+  error: '#FF3B30',
+  errorDark: '#FF453A',
+  warning: '#FF9500',
+  warningDark: '#FF9F0A',
+};
+
+// Orb state colors — aligned with logo gradient
+const orbColors = {
+  orbIdle: brand.indigo,        // Ready state — brand indigo
+  orbListening: brand.cyan,     // Active listening — cyan (alert, receiving)
+  orbProcessing: brand.indigoLight, // Thinking — lighter indigo
+  orbSpeaking: brand.violet,    // Speaking — deep violet
+  orbError: functional.error,   // Error — red
+};
+
+// Voice animation gradient (for mesh/aurora effects)
+const voiceGradient = {
+  start: brand.cyan,
+  mid: brand.indigo,
+  end: brand.violet,
 };
 
 export const lightTheme = {
-  ...accent,
-  // Backgrounds
-  bg: '#FAFAF9',            // Cloud Dancer warm white
-  bgSecondary: '#F5F3EF',   // Slightly warm
-  bgTertiary: '#EDEBE6',
+  // Brand
+  ...brand,
+  primary: brand.indigo,
+  primaryLight: brand.indigoLight,
+  primarySoft: 'rgba(88, 86, 214, 0.12)',
+  tealSoft: 'rgba(32, 128, 141, 0.12)',
+  cyanSoft: 'rgba(125, 211, 232, 0.15)',
+  
+  // Orb
+  ...orbColors,
+  voiceGradient,
+  
+  // Functional
+  success: functional.success,
+  error: functional.error,
+  warning: functional.warning,
+  
+  // Backgrounds — Luminous Intelligence light palette
+  bg: '#FAFAF8',              // Warm white (not pure)
+  bgSecondary: '#F2F0EB',
+  bgTertiary: '#E8E5DE',
+  bgGradientStart: '#FAFAF8',
+  bgGradientEnd: '#F2F0EB',
+  background: '#FAFAF8',
   
   // Surfaces
   card: '#FFFFFF',
-  cardBorder: '#E8E5DE',
+  cardBorder: 'rgba(0, 0, 0, 0.06)',
   cardElevated: '#FFFFFF',
   
   // Text
-  text: '#1A1A2E',
-  textSecondary: '#64748B',
-  textMuted: '#94A3B8',
+  text: '#1A1A1A',
+  textSecondary: '#6B6B6B',
+  textMuted: '#9A9A9A',
   textInverse: '#FFFFFF',
+  textLight: '#9A9A9A',
   
   // Input
   inputBg: '#FFFFFF',
   inputBorder: '#E2DFD8',
-  inputFocus: accent.primary,
+  inputFocus: brand.indigo,
   
-  // Orb
+  // Orb background
   orbBg: '#F0EDE6',
-  orbActive: accent.primary,
-  orbListening: accent.teal,
-  orbProcessing: accent.primary,
-  orbSpeaking: accent.teal,
-  orbError: accent.error,
   
   // Misc
-  shadow: 'rgba(0, 0, 0, 0.06)',
+  white: '#FFFFFF',
+  border: '#E8E5DE',
+  secondary: brand.indigo,
+  shadow: 'rgba(0, 0, 0, 0.08)',
   overlay: 'rgba(0, 0, 0, 0.4)',
   divider: '#E8E5DE',
   statusBar: 'dark' as const,
 };
 
 export const darkTheme = {
-  ...accent,
-  // Backgrounds
-  bg: '#0C0C14',            // Deep space navy
-  bgSecondary: '#12121E',
-  bgTertiary: '#1A1A2A',
+  // Brand
+  ...brand,
+  primary: brand.indigoLight,   // Lighter in dark mode
+  primaryLight: '#9B98F0',
+  primarySoft: 'rgba(123, 120, 232, 0.15)',
+  tealSoft: 'rgba(44, 181, 197, 0.15)',
+  cyanSoft: 'rgba(125, 211, 232, 0.12)',
+  
+  // Orb — slightly lighter in dark mode
+  orbIdle: brand.indigoLight,
+  orbListening: brand.cyan,
+  orbProcessing: '#9B98F0',
+  orbSpeaking: '#6B6BC4',
+  orbError: functional.errorDark,
+  voiceGradient,
+  
+  // Functional
+  success: functional.successDark,
+  error: functional.errorDark,
+  warning: functional.warningDark,
+  
+  // Backgrounds — Luminous Intelligence dark palette
+  bg: '#0D0D0D',              // Soft black (not pure)
+  bgSecondary: '#1A1A1E',
+  bgTertiary: '#2C2C30',
+  bgGradientStart: '#0D0D0D',
+  bgGradientEnd: '#1A1A2E',   // Hint of indigo
+  background: '#0D0D0D',
   
   // Surfaces
-  card: '#16162A',
-  cardBorder: '#252540',
-  cardElevated: '#1E1E36',
+  card: '#1C1C20',
+  cardBorder: 'rgba(255, 255, 255, 0.08)',
+  cardElevated: '#242428',
   
-  // Text
-  text: '#F1F0EE',          // Cloud Dancer tinted
-  textSecondary: '#9CA3AF',
-  textMuted: '#5B6078',
-  textInverse: '#0C0C14',
+  // Text — warm white, never pure
+  text: '#F0EDE8',
+  textSecondary: '#A0A0A0',
+  textMuted: '#6B6B6B',
+  textInverse: '#0D0D0D',
+  textLight: '#6B6B6B',
   
   // Input
-  inputBg: '#16162A',
-  inputBorder: '#2A2A44',
-  inputFocus: accent.primaryLight,
+  inputBg: '#1C1C20',
+  inputBorder: '#2C2C30',
+  inputFocus: brand.indigoLight,
   
-  // Orb
+  // Orb background
   orbBg: '#1A1A2E',
-  orbActive: accent.primaryLight,
-  orbListening: accent.teal,
-  orbProcessing: accent.primaryLight,
-  orbSpeaking: accent.teal,
-  orbError: accent.error,
   
   // Misc
-  shadow: 'rgba(0, 0, 0, 0.3)',
+  white: '#FFFFFF',
+  border: '#2C2C30',
+  secondary: brand.indigoLight,
+  shadow: 'rgba(0, 0, 0, 0.4)',
   overlay: 'rgba(0, 0, 0, 0.6)',
-  divider: '#252540',
+  divider: '#2C2C30',
   statusBar: 'light' as const,
 };
 
-export type Theme = typeof lightTheme;
+// Type definition
+export type Theme = Omit<typeof lightTheme, 'statusBar'> & {
+  statusBar: 'dark' | 'light';
+};
 
 export function useTheme(): Theme {
   const scheme = useColorScheme();
   return scheme === 'dark' ? darkTheme : lightTheme;
 }
 
-// Keep backward compat
+// Backward compat exports
 export const Colors = lightTheme;
 export const colors = Colors;

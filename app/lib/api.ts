@@ -41,20 +41,20 @@ export async function apiCall<T>(path: string, options: ApiOptions = {}): Promis
 
 // Convenience wrapper matching axios-like interface used by hooks
 export const api = {
-  async get(path: string, token?: string) {
-    const data = await apiCall(path, { token });
+  async get<T = unknown>(path: string, token?: string): Promise<{ data: T }> {
+    const data = await apiCall<T>(path, { token });
     return { data };
   },
-  async patch(path: string, body: unknown, token?: string) {
-    const data = await apiCall(path, { method: 'PATCH', body, token });
+  async patch<T = unknown>(path: string, body: unknown, token?: string): Promise<{ data: T }> {
+    const data = await apiCall<T>(path, { method: 'PATCH', body, token });
     return { data };
   },
-  async delete(path: string, token?: string) {
-    const data = await apiCall(path, { method: 'DELETE', token });
+  async delete<T = unknown>(path: string, token?: string): Promise<{ data: T }> {
+    const data = await apiCall<T>(path, { method: 'DELETE', token });
     return { data };
   },
-  async post(path: string, body: unknown, token?: string) {
-    const data = await apiCall(path, { method: 'POST', body, token });
+  async post<T = unknown>(path: string, body: unknown, token?: string): Promise<{ data: T }> {
+    const data = await apiCall<T>(path, { method: 'POST', body, token });
     return { data };
   },
 };

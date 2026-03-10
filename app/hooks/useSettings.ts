@@ -13,6 +13,8 @@ export interface UserSettings {
   };
   voice: {
     wake_word_mode: 'always_on' | 'smart' | 'manual';
+    conversationMode: boolean; // US-005: Hands-free continuous listening
+    interruptOnKeyword: boolean; // US-040: Keyword-based voice interrupt during TTS
   };
   onboarding_completed: boolean;
   tutorial_completed: boolean;
@@ -21,7 +23,7 @@ export interface UserSettings {
 
 const DEFAULT_SETTINGS: UserSettings = {
   personality: { tone: 'friendly', verbosity: 'normal', formality: 'tu', humor: true },
-  voice: { wake_word_mode: 'manual' },
+  voice: { wake_word_mode: 'manual', conversationMode: false, interruptOnKeyword: true },
   onboarding_completed: false,
   tutorial_completed: false,
   timezone: 'Europe/Paris',
@@ -30,16 +32,21 @@ const DEFAULT_SETTINGS: UserSettings = {
 export function useSettings() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Load settings on mount
   useEffect(() => {
     loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Only run on mount
   }, []);
+
+  interface SettingsResponse {
+    settings?: Partial<UserSettings>;
+  }
 
   const loadSettings = async () => {
     try {
-      const res = await api.get('/api/v1/settings');
+      const res = await api.get<SettingsResponse>('/api/v1/settings');
       if (res.data?.settings) {
         setSettings({ ...DEFAULT_SETTINGS, ...res.data.settings });
       }

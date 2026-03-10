@@ -16,6 +16,10 @@ import { MemoryRetriever } from './memoryRetriever.js';
 import { MemoryExtractor } from './memoryExtractor.js';
 import { sendNotificationToTelegram } from '../routes/telegram.js';
 import * as TelegramUser from './telegramUser.js';
+import { InboundMessageSchema } from '../schemas/ws-messages.js';
+import { checkRateLimit, getRateLimitConfig } from '../lib/rateLimiter.js';
+import { loadHistory, saveMessage, pruneHistory } from '../lib/conversationHistory.js';
+import { getLatestComparisons, searchComparisons } from '../lib/glucose.js';
 
 // Request states
 export enum RequestState {
@@ -49,6 +53,10 @@ interface CancelMessage {
   type: 'cancel';
 }
 
+interface InterruptMessage {
+  type: 'interrupt';
+}
+
 interface StartListeningMessage {
   type: 'start_listening';
 }
@@ -67,7 +75,18 @@ interface PingMessage {
   type: 'ping';
 }
 
-type ClientMessage = AudioChunkMessage | AudioEndMessage | TextMessage | CancelMessage | StartListeningMessage | StopListeningMessage | AudioMessage | PingMessage;
+interface KeywordCheckMessage {
+  type: 'keyword_check';
+  audio: string; // base64 audio
+  format: string;
+}
+
+interface MemoryContextMessage {
+  type: 'memory_context';
+  memory: string;
+}
+
+type ClientMessage = AudioChunkMessage | AudioEndMessage | TextMessage | CancelMessage | InterruptMessage | StartListeningMessage | StopListeningMessage | AudioMessage | PingMessage | KeywordCheckMessage | MemoryContextMessage;
 
 // WebSocket message types (server → client)
 interface StateChangeEvent {
@@ -221,7 +240,7 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
   },
   {
     name: 'web_search',
-    description: 'Rechercher une information sur le web',
+    description: "Rechercher une information sur le web. ATTENTION: N'utilise PAS ce tool pour glucose.press — utilise get_glucose à la place !",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -399,6 +418,99 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
         },
       },
       required: ['phone_number'],
+    },
+  },
+  {
+    name: 'create_timer',
+    description: "Créer un timer/minuteur qui notifie l'utilisateur à la fin. Commandes: 'timer 5 minutes', 'minuteur de 30 secondes', 'chrono 1 heure'. Supporte un label optionnel (ex: 'pour les pâtes').",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        duration_seconds: {
+          type: 'number',
+          description: "Durée du timer en secondes",
+        },
+        label: {
+          type: 'string',
+          description: "Label optionnel pour identifier le timer (ex: 'pour les pâtes', 'pour le gâteau')",
+        },
+      },
+      required: ['duration_seconds'],
+    },
+  },
+  {
+    name: 'cancel_timer',
+    description: "Annuler un ou tous les timers en cours. Utilise quand l'utilisateur dit 'annule le timer', 'arrête le minuteur', 'stop chrono'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        cancel_all: {
+          type: 'boolean',
+          description: "Si true, annule tous les timers. Sinon annule le plus récent.",
+        },
+      },
+    },
+  },
+  {
+    name: 'create_reminder',
+    description: "Créer un rappel natif sur l'iPhone/Android de l'utilisateur. Le rappel apparaît dans l'app Rappels iOS ou le calendrier Android avec une notification. Utilise quand l'utilisateur dit 'rappelle-moi de X dans Y', 'rappelle-moi à 15h', 'rappelle-moi dans 10 minutes'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string',
+          description: "Titre du rappel (ce dont l'utilisateur veut être rappelé)",
+        },
+        delay_minutes: {
+          type: 'number',
+          description: "Dans combien de minutes le rappel doit sonner",
+        },
+        notes: {
+          type: 'string',
+          description: "Notes supplémentaires pour le rappel (optionnel)",
+        },
+      },
+      required: ['title', 'delay_minutes'],
+    },
+  },
+  {
+    name: 'open_conversation',
+    description: "Ouvrir une conversation avec un contact sur une app de messagerie (WhatsApp, iMessage, Messenger). Utilise quand l'utilisateur dit 'ouvre WhatsApp avec Julie', 'écris à Maman sur iMessage', 'conversation avec Pierre'. Le client résoudra le nom du contact vers son numéro de téléphone.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        contact_name: {
+          type: 'string',
+          description: "Nom du contact à ouvrir (sera recherché dans les contacts du téléphone)",
+        },
+        app: {
+          type: 'string',
+          enum: ['whatsapp', 'imessage', 'messenger'],
+          description: "Application de messagerie à utiliser. Si non spécifié, WhatsApp par défaut.",
+        },
+      },
+      required: ['contact_name'],
+    },
+  },
+  {
+    name: 'get_glucose',
+    description: "OBLIGATOIRE quand l'utilisateur mentionne 'glucose', 'glucose.press', ou demande des articles/news/dossiers. Ce tool accède directement à la base de données glucose.press (site d'analyses comparatives de médias). Utilise-le À LA PLACE de web_search pour tout ce qui concerne glucose. Retourne les synthèses multi-sources.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description: "Nombre d'analyses à retourner (défaut 5, max 10)",
+        },
+        search: {
+          type: 'string',
+          description: "Mot-clé pour filtrer (optionnel, ex: 'Iran', 'Trump', 'Ukraine', 'climat')",
+        },
+        full_content: {
+          type: 'boolean',
+          description: "Si true, retourne le contenu COMPLET du premier article trouvé. Utilise quand l'utilisateur veut LIRE un article en entier.",
+        },
+      },
     },
   },
 ];
@@ -627,7 +739,9 @@ export class Orchestrator {
   private activeRequests: Map<string, ActiveRequest> = new Map();
   private userActiveRequest: Map<string, string> = new Map(); // userId → requestId
   private sessionHistory: Map<WebSocket, { role: 'user' | 'assistant'; content: string }[]> = new Map(); // in-memory conversation per WS session
-  private userHistory: Map<string, { messages: { role: 'user' | 'assistant'; content: string }[]; lastActivity: number }> = new Map(); // persistent per userId across reconnects
+  private userHistory: Map<string, { messages: { role: 'user' | 'assistant'; content: string }[]; lastActivity: number }> = new Map(); // in-memory cache, persisted to Supabase
+  private historyLoadedUsers = new Set<string>(); // Track which users have had history loaded
+  private clientMemory = new Map<string, string>(); // userId → client-provided memory context
 
   constructor(
     logger: FastifyBaseLogger,
@@ -648,8 +762,20 @@ export class Orchestrator {
 
     socket.on('message', (raw: Buffer) => {
       try {
-        const message = JSON.parse(raw.toString()) as ClientMessage;
-        this.handleClientMessage(socket, userId, message);
+        const parsed = JSON.parse(raw.toString());
+        const result = InboundMessageSchema.safeParse(parsed);
+        
+        if (!result.success) {
+          this.logger.warn({ msg: 'Invalid WebSocket message', errors: result.error.issues, raw: parsed });
+          this.sendEvent(socket, {
+            type: 'error',
+            message: 'Invalid message format',
+            requestId: 'unknown',
+          });
+          return;
+        }
+        
+        this.handleClientMessage(socket, userId, result.data as ClientMessage);
       } catch {
         this.sendEvent(socket, {
           type: 'error',
@@ -725,6 +851,20 @@ export class Orchestrator {
     userId: string,
     message: ClientMessage,
   ): void {
+    // Rate limiting check
+    const rateLimitConfig = getRateLimitConfig(message.type);
+    const rateLimit = checkRateLimit(userId, rateLimitConfig);
+    if (!rateLimit.allowed) {
+      this.logger.warn({ msg: 'Rate limited', userId, messageType: message.type, resetIn: rateLimit.resetIn });
+      socket.send(JSON.stringify({
+        type: 'error',
+        code: 'rate_limited',
+        message: `Trop de requêtes. Réessaie dans ${Math.ceil(rateLimit.resetIn / 1000)}s`,
+        requestId: 'rate_limit',
+      }));
+      return;
+    }
+
     switch (message.type) {
       case 'audio_chunk':
         this.handleAudioChunk(socket, userId, message.data);
@@ -737,6 +877,10 @@ export class Orchestrator {
         break;
       case 'cancel':
         this.cancelUserRequest(userId);
+        break;
+      case 'interrupt':
+        // US-039: Interrupt TTS but preserve conversation context
+        this.interruptUserRequest(socket, userId);
         break;
       case 'ping':
         this.logger.debug({ msg: 'Ping received, sending pong' });
@@ -752,6 +896,15 @@ export class Orchestrator {
       case 'audio_message':
         // New voice-first: full audio blob as base64
         this.handleAudioMessage(socket, userId, (message as any).audio, (message as any).format);
+        break;
+      case 'keyword_check':
+        // US-040: Fast transcription for keyword detection during TTS
+        this.handleKeywordCheck(socket, (message as KeywordCheckMessage).audio, (message as KeywordCheckMessage).format);
+        break;
+      case 'memory_context':
+        // Client-side persistent memory injection
+        this.clientMemory.set(userId, (message as MemoryContextMessage).memory);
+        this.logger.info({ msg: 'Client memory context received', userId, size: (message as MemoryContextMessage).memory.length });
         break;
     }
   }
@@ -789,6 +942,46 @@ export class Orchestrator {
       this.logger.error({ msg: 'Audio processing failed', error: (error as Error).message });
       this.sendEvent(socket, { type: 'error', message: (error as Error).message, requestId: request.id });
       this.sendEvent(socket, { type: 'state_change', state: RequestState.COMPLETED, requestId: request.id });
+    }
+  }
+
+  /**
+   * US-040: Fast keyword check for voice interrupts during TTS.
+   * Transcribes audio quickly and checks for interrupt keywords.
+   * Does NOT create a request or process with LLM.
+   */
+  private async handleKeywordCheck(
+    socket: WebSocket,
+    audioBase64: string,
+    _format: string,
+  ): Promise<void> {
+    // Keywords that trigger interrupt
+    const INTERRUPT_KEYWORDS = ['diva', 'stop', 'arrête', 'tais-toi'];
+    
+    try {
+      // Quick transcription via Groq (fastest path)
+      const sttResult = await this.transcribe('keyword-check', audioBase64);
+      const transcript = sttResult.text?.toLowerCase().trim() || '';
+      
+      // Check for interrupt keywords
+      const detectedKeyword = INTERRUPT_KEYWORDS.find(kw => transcript.includes(kw));
+      
+      this.sendEvent(socket, {
+        type: 'keyword_check_response',
+        detected: !!detectedKeyword,
+        keyword: detectedKeyword || null,
+        transcript,
+      } as any);
+    } catch (error) {
+      this.logger.warn({ msg: 'Keyword check transcription failed', error: (error as Error).message });
+      // On error, don't detect keyword — better to miss than false positive
+      this.sendEvent(socket, {
+        type: 'keyword_check_response',
+        detected: false,
+        keyword: null,
+        transcript: '',
+        error: (error as Error).message,
+      } as any);
     }
   }
 
@@ -884,7 +1077,24 @@ export class Orchestrator {
 
       // Get/create session history for this WS connection
       if (!this.sessionHistory.has(socket)) {
-        const existingUserHist = this.userHistory.get(request.userId);
+        // Check in-memory cache first
+        let existingUserHist = this.userHistory.get(request.userId);
+        
+        // If not in memory and not loaded yet, load from Supabase
+        if (!existingUserHist && !this.historyLoadedUsers.has(request.userId)) {
+          try {
+            const persistedHistory = await loadHistory(request.userId);
+            if (persistedHistory.length > 0) {
+              existingUserHist = { messages: persistedHistory, lastActivity: Date.now() };
+              this.userHistory.set(request.userId, existingUserHist);
+              this.logger.info({ msg: 'Loaded history from Supabase', count: persistedHistory.length });
+            }
+            this.historyLoadedUsers.add(request.userId);
+          } catch (err) {
+            this.logger.warn({ msg: 'Failed to load history from Supabase', error: String(err) });
+          }
+        }
+        
         if (existingUserHist && existingUserHist.messages.length > 0) {
           this.sessionHistory.set(socket, [...existingUserHist.messages]);
           this.logger.info({ msg: 'Restored history', count: existingUserHist.messages.length });
@@ -894,35 +1104,47 @@ export class Orchestrator {
       }
       const sessionHistory = this.sessionHistory.get(socket)!;
 
-      // Parallel: memories + user settings
+      // Pre-check: skip memory for trivial queries
       const tPrep = Date.now();
-      const [memories, userSettings] = await Promise.all([
-        this.retrieveMemories(request.userId, text),
-        (async (): Promise<any> => {
-          try {
-            const { data } = await getSupabase()
-              .from('users')
-              .select('settings')
-              .eq('id', request.userId)
-              .single();
-            return data?.settings;
-          } catch { return undefined; }
-        })(),
+      const textLower = text.trim().toLowerCase();
+      const isTrivialQuery = 
+        text.trim().length < 15 ||  // Very short queries
+        /^(salut|bonjour|hey|coucou|ça va|oui|non|ok|merci|au revoir|stop|arrête|d'accord)/i.test(textLower) ||  // Starts with greeting
+        /^(qui es[- ]tu|t['']?es qui|c['']?est quoi|comment tu)/i.test(textLower);  // Identity questions
+      
+      // Parallel: memories (if needed) + user settings (cached)
+      const [serverMemories, userSettings] = await Promise.all([
+        isTrivialQuery ? Promise.resolve([]) : this.retrieveMemories(request.userId, text),
+        this.getUserSettings(request.userId),
       ]);
+
+      // Merge server-side RAG memories with client-side persistent memory
+      const memories = [...serverMemories];
+      const clientMem = this.clientMemory.get(request.userId);
+      if (clientMem) {
+        memories.push(clientMem);
+      }
       metrics.prep = Date.now() - tPrep;
 
       sessionHistory.push({ role: 'user', content: text });
+      
+      // Persist to Supabase (non-blocking)
+      saveMessage(request.userId, 'user', text).catch(() => {});
 
       const userHist = this.userHistory.get(request.userId);
       if (userHist) userHist.lastActivity = Date.now();
 
       // Pre-search: skip for small talk, confirmations, short queries, or personal questions
-      const isSmallTalk = /^(salut|bonjour|hey|coucou|ça va|comment vas|merci|au revoir|bonne nuit|ok|d'accord|oui|non|cool|super|parfait|comment tu t'appelles|qui es[- ]tu|c'est quoi ton nom|rappelle[- ]?toi|souviens[- ]?toi|tu te souviens|qu'?est[- ]ce que tu sais sur moi)[\s?!.,]*$/i.test(text.trim());
-      const isConfirmation = /^(oui|non|ok|d'accord|vas[- ]?y|fais[- ]?le|ajoute|confirme|annule|stop|arrête|c'est bon|c'est ça|exactement|tout à fait|je veux bien|s'il te pla[iî]t|please)/i.test(text.trim());
-      const isTooShort = text.trim().split(/\s+/).length <= 3 && !text.includes('?');
-      const isPersonal = /mon\s+(agenda|calendrier|planning|rdv|rendez|mail|message|notif)/i.test(text);
-      const isActionRequest = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|met|mets)[\s-]/i.test(text.trim());
-      const skipSearch = isSmallTalk || isConfirmation || isTooShort || isPersonal || isActionRequest;
+      const isSmallTalk = /^(salut|bonjour|hey|coucou|ça va|comment vas|merci|au revoir|bonne nuit|ok|d'accord|oui|non|cool|super|parfait)/i.test(textLower);
+      const isIdentityQuestion = /(qui es[- ]tu|t['']?es qui|c['']?est quoi (ton nom|diva)|comment tu t['']?appelles|tu t['']?appelles comment|pr[ée]sente[- ]?toi|parle[- ]?moi de toi)/i.test(textLower);
+      const isConfirmation = /^(oui|non|ok|d'accord|vas[- ]?y|fais[- ]?le|ajoute|confirme|annule|stop|arrête|c'est bon|c'est ça|exactement|tout à fait|je veux bien|s'il te pla[iî]t|please)/i.test(textLower);
+      const isTooShort = text.trim().split(/\s+/).length <= 4;
+      const isPersonal = /mon\s+(agenda|calendrier|planning|rdv|rendez|mail|message|notif)/i.test(textLower);
+      const isActionRequest = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|met|mets)[\s-]/i.test(textLower);
+      // Skip search for conversational questions that don't need web search
+      const isConversational = /(tu m['']?entends|tu es l[àa]|tu fonctionnes|tu marches|allo|tu fais quoi|tu sers [àa] quoi|qu['']?est[- ]ce que tu (es|fais|peux)|tu peux (faire|m['']?aider)|aide[- ]?moi|raconte|blague|histoire|chante)/i.test(textLower);
+      const isSimpleQuestion = text.trim().split(/\s+/).length <= 8 && /^(est[- ]ce que|tu |comment |pourquoi tu|qu['']?est)/i.test(textLower);
+      const skipSearch = isSmallTalk || isIdentityQuestion || isConfirmation || isTooShort || isPersonal || isActionRequest || isConversational || isSimpleQuestion;
 
       let preSearchContext = '';
       if (!skipSearch) {
@@ -937,99 +1159,231 @@ export class Orchestrator {
         metrics.search = Date.now() - tSearch;
       }
 
-      // LLM call
+      // LLM call with streaming TTS (start TTS as sentences complete)
       const tLlm = Date.now();
-      let llmResult = await this.llm.chat({
-        userId: request.userId,
-        message: preSearchContext ? `${text}${preSearchContext}` : text,
-        history: sessionHistory.slice(0, -1),
-        memories,
-        tools: ELIO_TOOLS,
-        userSettings,
-      });
-      metrics.llm = Date.now() - tLlm;
+      let fullText = '';
+      let sentenceIndex = 0;
+      const ttsPromises: Promise<void>[] = [];
+      const ttsPending = new Map<number, string | null>();
+      let nextTtsToSend = 0;
+      let ttsStarted = false;
+      
+      // Helper to start TTS for a sentence and stream when ready
+      const streamSentence = (sentence: string, index: number) => {
+        if (!sentence.trim()) return;
+        
+        if (!ttsStarted) {
+          ttsStarted = true;
+          this.setState(socket, request, RequestState.SYNTHESIZING);
+        }
+        
+        ttsPending.set(index, null);
+        const promise = this.synthesize(`${request.id}-${index}`, sentence).then(result => {
+          if (request.cancelled) return;
+          ttsPending.set(index, result.audio_base64);
+          
+          // Send all ready chunks in order
+          while (ttsPending.has(nextTtsToSend) && ttsPending.get(nextTtsToSend) !== null) {
+            const audio = ttsPending.get(nextTtsToSend)!;
+            if (audio) this.sendEvent(socket, { type: 'tts_audio', audio, requestId: request.id });
+            ttsPending.delete(nextTtsToSend);
+            nextTtsToSend++;
+          }
+        }).catch(e => {
+          this.logger.error({ err: e, sentence, index }, 'TTS sentence failed');
+          ttsPending.set(index, '');
+        });
+        ttsPromises.push(promise);
+      };
 
-      if (request.cancelled) return;
+      // Check if this looks like a tool request (action words)
+      const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail|glucose|news|actu|infos|presse|articles|dossier|comparaison|synthèse|journée|aujourd'hui|hier|résume)/i.test(text);
+      this.logger.info({ msg: 'Tool check', text: text.substring(0, 50), mightNeedTools });
 
-      // Handle tool use
-      if (llmResult.toolUse && llmResult.toolUse.length > 0) {
-        const tTools = Date.now();
-        const toolResults = await this.executeTools(llmResult.toolUse, request.userId, socket);
-        for (const tool of llmResult.toolUse) {
-          const openUrl = (tool as unknown as Record<string, unknown>)._openUrl as string | undefined;
-          if (openUrl) this.sendEvent(socket, { type: 'open_url', url: openUrl, requestId: request.id } as ServerEvent);
+      // FORCE glucose tool when glucose.press is mentioned (bypass LLM choice)
+      const isGlucoseQuery = /glucose/i.test(text);
+      if (isGlucoseQuery) {
+        this.logger.info({ msg: 'Force glucose tool', text: text.substring(0, 50) });
+        
+        // Extract search term if any
+        const searchMatch = text.match(/(?:sur|about|concernant|iran|trump|ukraine|climat|pétrole|oil|israel|russia|chine|china)[\s:]*(\w+)/i);
+        const searchTerm = searchMatch?.[1] || undefined;
+        
+        // Check if user wants full content
+        const wantsFull = /(lis|lire|entier|complet|intégral|détail)/i.test(text);
+        
+        let comparisons;
+        if (searchTerm) {
+          comparisons = await searchComparisons(searchTerm, 5);
+        } else {
+          comparisons = await getLatestComparisons(5);
+        }
+        
+        if (comparisons.length > 0) {
+          let glucoseContext: string;
+          if (wantsFull && comparisons.length > 0) {
+            const article = comparisons[0];
+            const date = new Date(article.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+            glucoseContext = `[DONNÉES GLUCOSE.PRESS - Article complet]\n📰 ${article.title}\n(${article.sources_count} sources de ${article.countries_count} pays — ${date})\n\n${article.content || article.summary || 'Contenu non disponible'}`;
+          } else {
+            const formatted = comparisons.map((c, i) => {
+              const date = new Date(c.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short' });
+              return `${i + 1}. ${c.title} (${c.sources_count} sources, ${c.countries_count} pays) — ${date}${c.summary ? `\n   ${c.summary.substring(0, 150)}...` : ''}`;
+            }).join('\n\n');
+            glucoseContext = `[DONNÉES GLUCOSE.PRESS - ${comparisons.length} analyses récentes]\n\n${formatted}`;
+          }
+          
+          // Send to LLM with forced glucose context
+          const llmResult = await this.llm.chat({
+            userId: request.userId,
+            message: `L'utilisateur demande: "${text}"\n\nVoici les données de glucose.press que tu DOIS utiliser pour répondre:\n\n${glucoseContext}\n\nRésume ces informations de manière naturelle. Mentionne que ça vient de glucose.press.`,
+            history: sessionHistory.slice(0, -1),
+            memories,
+            userSettings,
+          });
+          metrics.llm = Date.now() - tLlm;
+          
+          if (request.cancelled) return;
+          
+          const fullText = llmResult.text;
+          sessionHistory.push({ role: 'assistant', content: fullText });
+          if (sessionHistory.length > 10) sessionHistory.splice(0, sessionHistory.length - 10);
+          saveMessage(request.userId, 'assistant', fullText).catch(() => {});
+          
+          // TTS
+          const tTts = Date.now();
+          this.setState(socket, request, RequestState.SYNTHESIZING);
+          const ttsResult = await this.synthesize(request.id, fullText);
+          if (ttsResult.audio_base64) {
+            this.sendEvent(socket, { type: 'tts_audio', audio: ttsResult.audio_base64, requestId: request.id });
+            this.setState(socket, request, RequestState.STREAMING_AUDIO);
+          }
+          metrics.tts = Date.now() - tTts;
+          
+          this.sendEvent(socket, { type: 'text_response', text: fullText, requestId: request.id, isPartial: false });
+          
+          metrics.total = Date.now() - t0;
+          this.logger.info({ msg: 'Glucose forced request completed', metrics });
+          this.setState(socket, request, RequestState.COMPLETED);
+          return;
+        }
+      }
+
+      if (mightNeedTools) {
+        // Use regular chat with tools
+        let llmResult = await this.llm.chat({
+          userId: request.userId,
+          message: preSearchContext ? `${text}${preSearchContext}` : text,
+          history: sessionHistory.slice(0, -1),
+          memories,
+          tools: ELIO_TOOLS,
+          userSettings,
+        });
+        metrics.llm = Date.now() - tLlm;
+
+        if (request.cancelled) return;
+
+        // Handle tool use
+        if (llmResult.toolUse && llmResult.toolUse.length > 0) {
+          const tTools = Date.now();
+          const toolResults = await this.executeTools(llmResult.toolUse, request.userId, socket);
+          for (const tool of llmResult.toolUse) {
+            const openUrl = (tool as unknown as Record<string, unknown>)._openUrl as string | undefined;
+            if (openUrl) this.sendEvent(socket, { type: 'open_url', url: openUrl, requestId: request.id } as ServerEvent);
+          }
+
+          const toolContext = toolResults.map(r => `[${r.name}]: ${r.result}`).join('\n');
+          llmResult = await this.llm.chat({
+            userId: request.userId,
+            message: toolContext,
+            history: [
+              ...sessionHistory.slice(0, -1),
+              { role: 'user' as const, content: text },
+              { role: 'assistant' as const, content: llmResult.text || '[tool]' },
+            ],
+            memories,
+            userSettings,
+          });
+          metrics.tools = Date.now() - tTools;
+          if (request.cancelled) return;
         }
 
-        const toolContext = toolResults.map(r => `[${r.name}]: ${r.result}`).join('\n');
-        llmResult = await this.llm.chat({
+        fullText = this.cleanForTTS(llmResult.text);
+      } else {
+        // Use streaming LLM → TTS for faster response
+        let sentenceBuffer = '';
+        
+        const llmStream = this.llm.chatStream({
           userId: request.userId,
-          message: toolContext,
-          history: [
-            ...sessionHistory.slice(0, -1),
-            { role: 'user' as const, content: text },
-            { role: 'assistant' as const, content: llmResult.text || '[tool]' },
-          ],
+          message: preSearchContext ? `${text}${preSearchContext}` : text,
+          history: sessionHistory.slice(0, -1),
           memories,
           userSettings,
         });
-        metrics.tools = Date.now() - tTools;
-        if (request.cancelled) return;
+
+        for await (const token of llmStream) {
+          if (request.cancelled) break;
+          
+          sentenceBuffer += token;
+          fullText += token;
+          
+          // Check for sentence boundary
+          const sentenceMatch = sentenceBuffer.match(/^(.*?[.!?])\s*(.*)$/s);
+          if (sentenceMatch) {
+            const completeSentence = sentenceMatch[1].trim();
+            sentenceBuffer = sentenceMatch[2];
+            
+            if (completeSentence) {
+              const cleanSentence = this.cleanForTTS(completeSentence);
+              if (cleanSentence) {
+                streamSentence(cleanSentence, sentenceIndex++);
+              }
+            }
+          }
+        }
+        
+        // Handle any remaining text
+        if (sentenceBuffer.trim()) {
+          const cleanSentence = this.cleanForTTS(sentenceBuffer.trim());
+          if (cleanSentence) {
+            streamSentence(cleanSentence, sentenceIndex++);
+          }
+        }
+        
+        metrics.llm = Date.now() - tLlm;
+        fullText = this.cleanForTTS(fullText);
       }
 
-      // Clean LLM output for TTS
-      const fullText = this.cleanForTTS(llmResult.text);
-
-      // Streaming TTS: split into sentences and synthesize in parallel
-      if (fullText.trim()) {
-        this.setState(socket, request, RequestState.SYNTHESIZING);
-        const tTts = Date.now();
-
-        // Split into sentences (. ! ? or long pause)
-        const sentences = fullText
-          .split(/(?<=[.!?])\s+/)
-          .map(s => s.trim())
-          .filter(s => s.length > 0);
-
-        if (sentences.length <= 2) {
-          // Short response: single TTS call (less overhead)
-          const ttsResult = await this.synthesize(request.id, fullText.trim());
-          this.sendEvent(socket, { type: 'tts_audio', audio: ttsResult.audio_base64, requestId: request.id });
-        } else {
-          // Long response: parallel TTS with ordered streaming output
-          // Start all TTS jobs in parallel, but send in order as they complete
-          const pending = new Map<number, string | null>(); // index -> audio or null if pending
-          let nextToSend = 0;
-          let completed = 0;
-
-          await Promise.all(sentences.map(async (sentence, i) => {
-            pending.set(i, null); // Mark as pending
-            try {
-              const result = await this.synthesize(`${request.id}-${i}`, sentence);
-              pending.set(i, result.audio_base64);
-              completed++;
-              
-              // Send all ready chunks in order
-              while (pending.has(nextToSend) && pending.get(nextToSend) !== null) {
-                if (request.cancelled) return;
-                const audio = pending.get(nextToSend)!;
-                this.sendEvent(socket, { type: 'tts_audio', audio, requestId: request.id });
-                pending.delete(nextToSend);
-                nextToSend++;
-              }
-            } catch (e) {
-              this.logger.error({ err: e, sentence, index: i }, 'TTS sentence failed');
-              pending.set(i, ''); // Empty string to not block
-              completed++;
-            }
-          }));
+      // If we didn't stream TTS yet (tool path), do it now
+      const tTts = Date.now();
+      if (sentenceIndex === 0 && fullText.trim()) {
+        const sentences = fullText.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 0);
+        for (const sentence of sentences) {
+          streamSentence(sentence, sentenceIndex++);
         }
-
-        metrics.tts = Date.now() - tTts;
+      }
+      
+      // Wait for all TTS to complete
+      if (ttsPromises.length > 0) {
+        await Promise.all(ttsPromises);
+      }
+      
+      metrics.tts = Date.now() - tTts;
+      if (ttsStarted) {
         this.setState(socket, request, RequestState.STREAMING_AUDIO);
       }
 
+      // US-039: Add assistant response to history
       sessionHistory.push({ role: 'assistant', content: fullText });
-      if (sessionHistory.length > 20) sessionHistory.splice(0, sessionHistory.length - 20);
+      if (sessionHistory.length > 10) sessionHistory.splice(0, sessionHistory.length - 10);
+      
+      // Persist to Supabase (non-blocking)
+      saveMessage(request.userId, 'assistant', fullText).catch(() => {});
+      
+      // Prune old history periodically (every ~20 messages)
+      if (sessionHistory.length >= 10) {
+        pruneHistory(request.userId).catch(() => {});
+      }
 
       this.sendEvent(socket, { type: 'text_response', text: fullText, requestId: request.id, isPartial: false });
 
@@ -1301,6 +1655,101 @@ export class Orchestrator {
             results.push({ name: tool.name, result: callResult });
             break;
           }
+          case 'create_timer': {
+            if (!socket) {
+              results.push({ name: tool.name, result: 'WebSocket non disponible.' });
+              break;
+            }
+            const timerParams = input as unknown as { duration_seconds: number; label?: string };
+            const timerResult = await this.requestCreateTimerFromClient(socket, timerParams.duration_seconds, timerParams.label);
+            results.push({ name: tool.name, result: timerResult });
+            break;
+          }
+          case 'cancel_timer': {
+            if (!socket) {
+              results.push({ name: tool.name, result: 'WebSocket non disponible.' });
+              break;
+            }
+            const cancelParams = input as unknown as { cancel_all?: boolean };
+            const cancelResult = await this.requestCancelTimerFromClient(socket, cancelParams.cancel_all ?? false);
+            results.push({ name: tool.name, result: cancelResult });
+            break;
+          }
+          case 'create_reminder': {
+            // US-036: Create native iOS/Android reminder
+            if (!socket) {
+              results.push({ name: tool.name, result: 'WebSocket non disponible.' });
+              break;
+            }
+            const reminderParams = input as unknown as { title: string; delay_minutes: number; notes?: string };
+            const reminderResult = await this.requestCreateReminderFromClient(
+              socket,
+              reminderParams.title,
+              reminderParams.delay_minutes,
+              reminderParams.notes
+            );
+            results.push({ name: tool.name, result: reminderResult });
+            break;
+          }
+          case 'open_conversation': {
+            // US-021: Open conversation with contact on messaging app
+            if (!socket) {
+              results.push({ name: tool.name, result: 'WebSocket non disponible.' });
+              break;
+            }
+            const convParams = input as unknown as { contact_name: string; app?: string };
+            const convResult = await this.requestOpenConversationFromClient(
+              socket,
+              convParams.contact_name,
+              (convParams.app as 'whatsapp' | 'imessage' | 'messenger') || 'whatsapp'
+            );
+            results.push({ name: tool.name, result: convResult });
+            break;
+          }
+          case 'get_glucose': {
+            const compParams = input as unknown as { limit?: number; search?: string; full_content?: boolean };
+            const limit = Math.min(compParams.limit || 5, 10);
+            
+            let comparisons;
+            if (compParams.search) {
+              comparisons = await searchComparisons(compParams.search, limit);
+            } else {
+              comparisons = await getLatestComparisons(limit);
+            }
+            
+            if (comparisons.length === 0) {
+              results.push({ name: tool.name, result: 'Aucun dossier approfondi trouvé sur Glucose.' });
+              break;
+            }
+            
+            // If full_content requested, return the complete content of the first match
+            if (compParams.full_content && comparisons.length > 0) {
+              const article = comparisons[0];
+              const date = new Date(article.created_at).toLocaleString('fr-FR', { 
+                day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' 
+              });
+              const fullContent = article.content || article.summary || 'Contenu non disponible';
+              results.push({ 
+                name: tool.name, 
+                result: `📰 **${article.title}**\n(${article.sources_count} sources de ${article.countries_count} pays — ${date})\n\n${fullContent}\n\n[Source: glucose.press — Analyse comparative multi-sources]` 
+              });
+              break;
+            }
+            
+            const formatted = comparisons.map((c, i) => {
+              const date = new Date(c.created_at).toLocaleString('fr-FR', { 
+                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
+              });
+              const summary = c.summary ? `\n   Résumé: ${c.summary.substring(0, 200)}${c.summary.length > 200 ? '...' : ''}` : '';
+              return `${i + 1}. ${c.title} (${c.sources_count} sources, ${c.countries_count} pays) — ${date}${summary}`;
+            }).join('\n\n');
+            
+            results.push({ 
+              name: tool.name, 
+              result: `${comparisons.length} dossiers approfondis depuis glucose.press:\n\n${formatted}\n\n[Ces analyses comparatives croisent les perspectives de médias internationaux. Mentionne glucose.press !]` 
+            });
+            break;
+          }
           default:
             results.push({ name: tool.name, result: `Outil ${tool.name} non disponible` });
         }
@@ -1315,7 +1764,7 @@ export class Orchestrator {
     // Direct HTTP call to Piper TTS server (faster than Redis queue)
     try {
       const t0 = Date.now();
-      const res = await fetch('http://localhost:8880/v1/audio/speech', {
+      const res = await fetch('http://localhost:8881/v1/audio/speech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -1437,6 +1886,48 @@ export class Orchestrator {
     }
   }
 
+  /**
+   * US-039: Interrupt current TTS but preserve conversation context.
+   * Unlike cancel, this keeps the conversation history intact.
+   */
+  private interruptUserRequest(socket: WebSocket, userId: string): void {
+    const requestId = this.userActiveRequest.get(userId);
+    const request = requestId ? this.activeRequests.get(requestId) : null;
+
+    this.logger.info({ msg: 'Interrupt request', userId, requestId, state: request?.state });
+
+    // Get session history for this socket
+    const sessionHistory = this.sessionHistory.get(socket);
+    
+    // If there's an active request being processed, mark partial response in history
+    if (sessionHistory && sessionHistory.length > 0) {
+      const lastMessage = sessionHistory[sessionHistory.length - 1];
+      
+      // If the last message is from assistant and we're currently in speaking/synthesizing state,
+      // mark it as interrupted
+      if (lastMessage.role === 'assistant' && request && 
+          (request.state === RequestState.SYNTHESIZING || 
+           request.state === RequestState.STREAMING_AUDIO ||
+           request.state === RequestState.THINKING)) {
+        // Append [interrompu] marker to preserve context
+        lastMessage.content = lastMessage.content + ' [interrompu]';
+        this.logger.info({ msg: 'Marked response as interrupted', userId });
+      }
+    }
+
+    // Cancel the current request processing (stops TTS pipeline)
+    if (requestId) {
+      this.cancelRequest(requestId);
+    }
+
+    // Send ready state to client - conversation context is preserved
+    this.sendEvent(socket, {
+      type: 'state_change',
+      state: RequestState.COMPLETED,
+      requestId: requestId || 'interrupt',
+    });
+  }
+
   private cleanupRequest(requestId: string): void {
     const request = this.activeRequests.get(requestId);
     if (request?.timeoutHandle) {
@@ -1504,6 +1995,30 @@ export class Orchestrator {
   // Simple memory cache: userId -> { memories, timestamp }
   private memoryCache = new Map<string, { memories: string[]; timestamp: number }>();
   private readonly MEMORY_CACHE_TTL = 60_000; // 1 minute
+
+  // User settings cache: userId -> { settings, timestamp }
+  private settingsCache = new Map<string, { settings: any; timestamp: number }>();
+  private readonly SETTINGS_CACHE_TTL = 300_000; // 5 minutes
+
+  private async getUserSettings(userId: string): Promise<any> {
+    const cached = this.settingsCache.get(userId);
+    if (cached && Date.now() - cached.timestamp < this.SETTINGS_CACHE_TTL) {
+      return cached.settings;
+    }
+
+    try {
+      const { data } = await getSupabase()
+        .from('users')
+        .select('settings')
+        .eq('id', userId)
+        .single();
+      
+      this.settingsCache.set(userId, { settings: data?.settings, timestamp: Date.now() });
+      return data?.settings;
+    } catch {
+      return undefined;
+    }
+  }
 
   private async retrieveMemories(userId: string, query: string): Promise<string[]> {
     // Check cache first
@@ -1976,16 +2491,184 @@ export class Orchestrator {
   }
 
   /**
+   * Request timer creation from client app
+   */
+  private async requestCreateTimerFromClient(
+    socket: import('ws').WebSocket,
+    durationSeconds: number,
+    label?: string,
+  ): Promise<string> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve("Le téléphone n'a pas répondu.");
+      }, 8000);
+
+      this.sendEvent(socket, {
+        type: 'request_create_timer',
+        duration_seconds: durationSeconds,
+        label,
+      } as any);
+
+      const handler = (raw: Buffer) => {
+        try {
+          const msg = JSON.parse(raw.toString());
+          if (msg.type === 'create_timer_response') {
+            clearTimeout(timeout);
+            socket.removeListener('message', handler);
+
+            if (msg.error) {
+              resolve(`Erreur timer : ${msg.error}`);
+              return;
+            }
+
+            resolve(msg.message || "Timer créé.");
+          }
+        } catch { /* ignore */ }
+      };
+
+      socket.on('message', handler);
+    });
+  }
+
+  /**
+   * Request timer cancellation from client app
+   */
+  private async requestCancelTimerFromClient(
+    socket: import('ws').WebSocket,
+    cancelAll: boolean,
+  ): Promise<string> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve("Le téléphone n'a pas répondu.");
+      }, 8000);
+
+      this.sendEvent(socket, {
+        type: 'request_cancel_timer',
+        cancel_all: cancelAll,
+      } as any);
+
+      const handler = (raw: Buffer) => {
+        try {
+          const msg = JSON.parse(raw.toString());
+          if (msg.type === 'cancel_timer_response') {
+            clearTimeout(timeout);
+            socket.removeListener('message', handler);
+
+            if (msg.error) {
+              resolve(`Erreur annulation : ${msg.error}`);
+              return;
+            }
+
+            resolve(msg.message || "Timer annulé.");
+          }
+        } catch { /* ignore */ }
+      };
+
+      socket.on('message', handler);
+    });
+  }
+
+  /**
+   * US-036: Request to create a native reminder on client device
+   */
+  private async requestCreateReminderFromClient(
+    socket: import('ws').WebSocket,
+    title: string,
+    delayMinutes: number,
+    notes?: string,
+  ): Promise<string> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve("Le téléphone n'a pas répondu.");
+      }, 8000);
+
+      this.sendEvent(socket, {
+        type: 'request_create_reminder',
+        title,
+        delay_minutes: delayMinutes,
+        notes,
+      } as any);
+
+      const handler = (raw: Buffer) => {
+        try {
+          const msg = JSON.parse(raw.toString());
+          if (msg.type === 'create_reminder_response') {
+            clearTimeout(timeout);
+            socket.removeListener('message', handler);
+
+            if (msg.error) {
+              resolve(`Erreur rappel : ${msg.error}`);
+              return;
+            }
+
+            resolve(msg.message || `Rappel créé pour dans ${delayMinutes} minutes.`);
+          }
+        } catch { /* ignore */ }
+      };
+
+      socket.on('message', handler);
+    });
+  }
+
+  /**
+   * US-021: Request to open a conversation with a contact on a messaging app
+   */
+  private async requestOpenConversationFromClient(
+    socket: import('ws').WebSocket,
+    contactName: string,
+    app: 'whatsapp' | 'imessage' | 'messenger',
+  ): Promise<string> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve("Le téléphone n'a pas répondu.");
+      }, 8000);
+
+      this.sendEvent(socket, {
+        type: 'request_open_conversation',
+        contact_name: contactName,
+        app,
+      } as any);
+
+      const handler = (raw: Buffer) => {
+        try {
+          const msg = JSON.parse(raw.toString());
+          if (msg.type === 'open_conversation_response') {
+            clearTimeout(timeout);
+            socket.removeListener('message', handler);
+
+            if (msg.error) {
+              resolve(msg.error);
+              return;
+            }
+
+            resolve(msg.message || `Conversation avec ${contactName} ouverte sur ${app}.`);
+          }
+        } catch { /* ignore */ }
+      };
+
+      socket.on('message', handler);
+    });
+  }
+
+  /**
    * Refresh Gmail access token
    */
   private async refreshGmailToken(refreshToken: string): Promise<{ access_token: string; expires_in: number } | null> {
+    const clientId = process.env['GOOGLE_CLIENT_ID_WEB'];
+    const clientSecret = process.env['GOOGLE_CLIENT_SECRET'];
+    
+    if (!clientId || !clientSecret) {
+      this.logger.error({ msg: 'Missing GOOGLE_CLIENT_ID_WEB or GOOGLE_CLIENT_SECRET env vars' });
+      return null;
+    }
+    
     try {
       const res = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-          client_id: process.env['GOOGLE_CLIENT_ID_WEB'] || '794649959450-fc4ujikilh1eavfnbh3ov4aq3uphvq91.apps.googleusercontent.com',
-          client_secret: process.env['GOOGLE_CLIENT_SECRET'] || '',
+          client_id: clientId,
+          client_secret: clientSecret,
           refresh_token: refreshToken,
           grant_type: 'refresh_token',
         }),
