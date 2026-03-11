@@ -1135,16 +1135,9 @@ export class Orchestrator {
       if (userHist) userHist.lastActivity = Date.now();
 
       // Pre-search: skip for small talk, confirmations, short queries, or personal questions
-      // PHILOSOPHY: Always search by default. Only skip for obvious small talk, confirmations, 
-      // and questions about Diva herself. Better to search for nothing than miss real info.
-      const isSmallTalk = /^(salut|bonjour|hey|coucou|ça va|comment vas|merci|au revoir|bonne nuit|cool|super|parfait|top|génial|nice|ok merci|merci beaucoup)/i.test(textLower);
-      const isIdentityQuestion = /(qui es[- ]tu|t['']?es qui|c['']?est quoi (ton nom|diva)|comment tu t['']?appelles|tu t['']?appelles comment|pr[ée]sente[- ]?toi|parle[- ]?moi de toi)/i.test(textLower);
-      const isConfirmation = /^(oui|non|ok|d'accord|vas[- ]?y|fais[- ]?le|confirme|annule|stop|arrête|c'est bon|c'est ça|exactement|tout à fait|je veux bien)/i.test(textLower);
-      const isSingleWord = text.trim().split(/\s+/).length <= 1;
-      const isPersonalAction = /^(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|met|mets)[\s-]/i.test(textLower);
-      const isConversational = /(tu m['']?entends|tu es l[àa]|tu fonctionnes|tu marches|allo|tu fais quoi|tu sers [àa] quoi|qu['']?est[- ]ce que tu (es|fais|peux)|tu peux (faire|m['']?aider)|aide[- ]?moi|raconte[- ]moi (une|un) (blague|histoire)|chante)/i.test(textLower);
-      // Only skip search for things that CLEARLY don't need web info
-      const skipSearch = isSmallTalk || isIdentityQuestion || isConfirmation || isSingleWord || isConversational;
+      // No more pre-search logic — Claude decides when to use web_search via tools.
+      // This is faster (no unnecessary searches) and smarter (model knows its own knowledge cutoff).
+      const skipSearch = true; // Pre-search disabled — tools handle everything
 
       let preSearchContext = '';
       if (!skipSearch) {
@@ -1197,8 +1190,10 @@ export class Orchestrator {
       };
 
       // Check if this looks like a tool request (action words)
-      const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail|glucose|news|actu|infos|presse|articles|dossier|comparaison|synthèse|journée|aujourd'hui|hier|résume|cherche|recherche|google|internet|trouve|v[ée]rifie)/i.test(text);
-      this.logger.info({ msg: 'Tool check', text: text.substring(0, 50), mightNeedTools });
+      // Always give Claude access to tools — let the model decide when to search.
+      // Claude knows its knowledge cutoff and will use web_search when it doesn't have the answer.
+      const mightNeedTools = true;
+      this.logger.info({ msg: 'Processing with tools available', text: text.substring(0, 50) });
 
       // FORCE glucose tool when glucose.press is mentioned (bypass LLM choice)
       const isGlucoseQuery = /glucose/i.test(text);
