@@ -907,6 +907,7 @@ export class Orchestrator {
         // Save settings via WebSocket
         this.handleUpdateSettings(socket, userId, (message as any).settings).catch(e => this.logger.error({ msg: 'WS update_settings error', error: e }));
         break;
+    }
   }
 
   private async handleAudioMessage(
