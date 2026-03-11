@@ -15,14 +15,9 @@
     "ios": {
       "supportsTablet": true,
       "userInterfaceStyle": "automatic",
-      "bundleIdentifier": "fr.papote.diva",
-      "buildNumber": "1",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Diva a besoin du micro pour la reconnaissance vocale",
-        "NSSpeechRecognitionUsageDescription": "Diva utilise la reconnaissance vocale pour comprendre tes commandes"
-      },
-      "entitlements": {
-        "com.apple.security.application-groups": ["group.fr.papote.diva"]
+        "NSMicrophoneUsageDescription": "Diva a besoin du micro pour écouter ta voix et détecter le mot-clé \"Diva\".",
+        "NSSpeechRecognitionUsageDescription": "Diva utilise la reconnaissance vocale pour détecter quand tu dis \"Diva\" et comprendre tes demandes."
       }
     },
     "android": {

@@ -1,15 +1,21 @@
 /**
  * EL-010 — Wake Word detection hook
  *
- * Detects "Diva" wake word using:
- * 1. Porcupine (if API key configured) - Best accuracy, low battery
- * 2. Native Speech Recognition fallback - Free, higher battery usage
+ * Uses @react-native-voice/voice (native iOS Speech Recognition)
+ * to detect the keyword "Diva" in continuous listening mode.
  *
- * Requires expo prebuild (native modules don't work in Expo Go)
+ * Supports three modes:
+ * - always_on: listens continuously, restarts after each recognition
+ * - smart: listens continuously but pauses in background
+ * - manual: wake word disabled, user must tap to activate
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { Platform, AppState } from 'react-native';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { AppState, type AppStateStatus, Platform } from 'react-native';
+import Voice, {
+  type SpeechResultsEvent,
+  type SpeechErrorEvent,
+} from '@react-native-voice/voice';
 
 // Conditional imports - these will fail in Expo Go
 let PorcupineManager: any = null;
@@ -35,186 +41,163 @@ const WAKE_WORD = 'diva';
 
 export type WakeWordMode = 'always_on' | 'smart' | 'manual';
 
+const WAKE_KEYWORD = 'diva';
+// Cooldown to avoid rapid re-triggers (ms)
+const COOLDOWN_MS = 2000;
+// Restart delay after speech ends (ms)
+const RESTART_DELAY_MS = 500;
+
 interface UseWakeWordOptions {
   mode: WakeWordMode;
   onWakeWordDetected: () => void;
-  enabled?: boolean;
+  /** If true, won't listen while the main voice session is active */
+  pauseWhileRecording?: boolean;
 }
 
-export function useWakeWord({ mode, onWakeWordDetected, enabled = true }: UseWakeWordOptions) {
+export function useWakeWord({
+  mode,
+  onWakeWordDetected,
+  pauseWhileRecording = false,
+}: UseWakeWordOptions) {
   const [isListening, setIsListening] = useState(false);
   const [isAvailable, setIsAvailable] = useState(false);
-  const [detectionMethod, setDetectionMethod] = useState<'porcupine' | 'voice' | 'none'>('none');
-  
-  const porcupineRef = useRef<any>(null);
-  const voiceListeningRef = useRef(false);
-  const appStateRef = useRef(AppState.currentState);
+  const isListeningRef = useRef(false);
+  const lastTriggerRef = useRef(0);
+  const shouldListenRef = useRef(false);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Check what's available on mount
+  // Check availability on mount
   useEffect(() => {
-    checkAvailability();
+    // @react-native-voice/voice is available on iOS and Android
+    setIsAvailable(Platform.OS === 'ios' || Platform.OS === 'android');
   }, []);
 
-  // Handle app state changes (pause when backgrounded)
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (appStateRef.current.match(/active/) && nextAppState.match(/inactive|background/)) {
-        // App going to background - pause wake word to save battery
-        if (mode !== 'always_on') {
-          stopInternal();
-        }
-      } else if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
-        // App coming to foreground - resume if was listening
-        if (enabled && mode !== 'manual' && !isListening) {
-          startInternal();
+  // Handle speech results — look for wake word
+  const onSpeechResults = useCallback(
+    (event: SpeechResultsEvent) => {
+      const now = Date.now();
+      if (now - lastTriggerRef.current < COOLDOWN_MS) return;
+
+      const results = event.value || [];
+      for (const transcript of results) {
+        if (transcript.toLowerCase().includes(WAKE_KEYWORD)) {
+          lastTriggerRef.current = now;
+          console.log(`[WakeWord] Detected "${WAKE_KEYWORD}" in: "${transcript}"`);
+          // Stop listening briefly, callback will handle activation
+          Voice.stop().catch(() => {});
+          onWakeWordDetected();
+          return;
         }
       }
-      appStateRef.current = nextAppState;
-    });
+    },
+    [onWakeWordDetected],
+  );
 
-    return () => subscription.remove();
-  }, [mode, enabled, isListening]);
+  // Handle speech end — restart listening if in continuous mode
+  const onSpeechEnd = useCallback(() => {
+    if (shouldListenRef.current && !pauseWhileRecording) {
+      // Small delay before restarting to avoid audio conflicts
+      restartTimerRef.current = setTimeout(() => {
+        if (shouldListenRef.current) {
+          Voice.start('fr-FR').catch((err) => {
+            console.warn('[WakeWord] Restart failed:', err);
+          });
+        }
+      }, RESTART_DELAY_MS);
+    }
+  }, [pauseWhileRecording]);
 
-  const checkAvailability = useCallback(async () => {
-    // Check Porcupine first (preferred)
-    if (PorcupineManager && PORCUPINE_ACCESS_KEY) {
-      setIsAvailable(true);
-      setDetectionMethod('porcupine');
-      console.log('[WakeWord] Using Porcupine');
+  // Handle errors — restart on recoverable errors
+  const onSpeechError = useCallback((event: SpeechErrorEvent) => {
+    const errorCode = event.error?.code;
+    console.warn('[WakeWord] Error:', event.error?.message);
+
+    // Restart on common recoverable errors
+    if (shouldListenRef.current && errorCode !== 'permissions') {
+      restartTimerRef.current = setTimeout(() => {
+        if (shouldListenRef.current) {
+          Voice.start('fr-FR').catch(() => {});
+        }
+      }, RESTART_DELAY_MS * 2);
+    }
+  }, []);
+
+  // Register Voice callbacks
+  useEffect(() => {
+    Voice.onSpeechResults = onSpeechResults;
+    Voice.onSpeechEnd = onSpeechEnd;
+    Voice.onSpeechError = onSpeechError;
+
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners).catch(() => {});
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    };
+  }, [onSpeechResults, onSpeechEnd, onSpeechError]);
+
+  // Handle app state changes for 'smart' mode
+  useEffect(() => {
+    if (mode !== 'smart') return;
+
+    const handleAppState = (state: AppStateStatus) => {
+      if (state === 'active' && shouldListenRef.current) {
+        Voice.start('fr-FR').catch(() => {});
+        setIsListening(true);
+        isListeningRef.current = true;
+      } else if (state === 'background' && isListeningRef.current) {
+        Voice.stop().catch(() => {});
+        setIsListening(false);
+        isListeningRef.current = false;
+      }
+    };
+
+    const sub = AppState.addEventListener('change', handleAppState);
+    return () => sub.remove();
+  }, [mode]);
+
+  const start = useCallback(async () => {
+    if (mode === 'manual') return;
+    if (!isAvailable) {
+      console.warn('[WakeWord] Speech recognition not available');
       return;
     }
 
-    // Fallback to Voice
-    if (Voice) {
-      try {
-        const available = await Voice.isAvailable();
-        if (available) {
-          setIsAvailable(true);
-          setDetectionMethod('voice');
-          console.log('[WakeWord] Using Voice (speech recognition)');
-          
-          // Set up Voice listeners
-          Voice.onSpeechResults = handleVoiceResults;
-          Voice.onSpeechError = handleVoiceError;
-          return;
-        }
-      } catch (err) {
-        console.log('[WakeWord] Voice not available:', err);
-      }
-    }
-
-    setIsAvailable(false);
-    setDetectionMethod('none');
-    console.log('[WakeWord] No wake word detection available');
-  }, []);
-
-  const handleVoiceResults = useCallback((e: any) => {
-    const results = e.value || [];
-    for (const result of results) {
-      const lower = result.toLowerCase();
-      if (lower.includes(WAKE_WORD) || lower.includes('diva') || lower.includes('deva')) {
-        console.log('[WakeWord] Wake word detected via Voice:', result);
-        onWakeWordDetected();
-        // Restart listening after detection
-        if (voiceListeningRef.current) {
-          restartVoiceListening();
-        }
-        return;
-      }
-    }
-    // No wake word found, restart listening
-    if (voiceListeningRef.current) {
-      restartVoiceListening();
-    }
-  }, [onWakeWordDetected]);
-
-  const handleVoiceError = useCallback((e: any) => {
-    console.log('[WakeWord] Voice error:', e);
-    // Restart on error (common with timeout)
-    if (voiceListeningRef.current) {
-      setTimeout(() => restartVoiceListening(), 500);
-    }
-  }, []);
-
-  const restartVoiceListening = useCallback(async () => {
     try {
-      await Voice?.stop();
-      await Voice?.start('fr-FR');
-    } catch (err) {
-      console.log('[WakeWord] Restart error:', err);
-    }
-  }, []);
-
-  const startInternal = useCallback(async () => {
-    if (!isAvailable || mode === 'manual') return;
-
-    try {
-      if (detectionMethod === 'porcupine' && PorcupineManager) {
-        // Start Porcupine
-        porcupineRef.current = await PorcupineManager.fromBuiltInKeywords(
-          PORCUPINE_ACCESS_KEY,
-          ['picovoice'], // Using built-in keyword as fallback; custom 'diva' would need training
-          (keywordIndex: number) => {
-            console.log('[WakeWord] Porcupine detected keyword');
-            onWakeWordDetected();
-          }
-        );
-        await porcupineRef.current.start();
-        console.log('[WakeWord] Porcupine started');
-      } else if (detectionMethod === 'voice' && Voice) {
-        // Start Voice recognition
-        voiceListeningRef.current = true;
-        await Voice.start('fr-FR');
-        console.log('[WakeWord] Voice recognition started');
-      }
-      
+      shouldListenRef.current = true;
+      await Voice.start('fr-FR');
       setIsListening(true);
+      isListeningRef.current = true;
+      console.log(`[WakeWord] Listening started (mode: ${mode}, keyword: "${WAKE_KEYWORD}")`);
     } catch (err) {
-      console.error('[WakeWord] Start error:', err);
-      setIsListening(false);
+      console.error('[WakeWord] Start failed:', err);
     }
-  }, [isAvailable, mode, detectionMethod, onWakeWordDetected]);
-
-  const stopInternal = useCallback(async () => {
-    try {
-      if (porcupineRef.current) {
-        await porcupineRef.current.stop();
-        await porcupineRef.current.delete();
-        porcupineRef.current = null;
-      }
-      
-      if (Voice) {
-        voiceListeningRef.current = false;
-        await Voice.stop();
-        await Voice.destroy();
-      }
-      
-      setIsListening(false);
-    } catch (err) {
-      console.error('[WakeWord] Stop error:', err);
-    }
-  }, []);
-
-  const start = useCallback(async () => {
-    await startInternal();
-  }, [startInternal]);
+  }, [mode, isAvailable]);
 
   const stop = useCallback(async () => {
-    await stopInternal();
-  }, [stopInternal]);
-
-  // Auto-start based on mode and enabled state
-  useEffect(() => {
-    if (enabled && mode !== 'manual' && isAvailable && !isListening) {
-      startInternal();
-    } else if (!enabled && isListening) {
-      stopInternal();
+    shouldListenRef.current = false;
+    if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    try {
+      await Voice.stop();
+      await Voice.destroy();
+    } catch {
+      // ignore
     }
-    
-    return () => {
-      stopInternal();
-    };
-  }, [enabled, mode, isAvailable]);
+    setIsListening(false);
+    isListeningRef.current = false;
+    console.log('[WakeWord] Listening stopped');
+  }, []);
+
+  // Pause/resume when main recording is active
+  useEffect(() => {
+    if (pauseWhileRecording && isListeningRef.current) {
+      Voice.stop().catch(() => {});
+      setIsListening(false);
+      isListeningRef.current = false;
+    } else if (!pauseWhileRecording && shouldListenRef.current && !isListeningRef.current) {
+      Voice.start('fr-FR').catch(() => {});
+      setIsListening(true);
+      isListeningRef.current = true;
+    }
+  }, [pauseWhileRecording]);
 
   return {
     isListening,
