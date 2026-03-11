@@ -2,7 +2,7 @@
  * DIVA — Main Screen with Mascot Orb
  * 2026 Design: Dark-first, Lucide icons, mascot-centered
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Text, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -14,6 +14,7 @@ import { ErrorOverlay } from '../../components/ErrorOverlay';
 import { useVoiceSession } from '../../hooks/useVoiceSession';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import { useSettings } from '../../hooks/useSettings';
+import { useWakeWord } from '../../hooks/useWakeWord';
 import { useTheme } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 
@@ -60,6 +61,27 @@ export default function OrbScreen() {
     conversationMode: settings.voice.conversationMode,
     onConversationModeChange: handleConversationModeChange,
   });
+
+  // Wake word detection — activates voice session when "Diva" is heard
+  const handleWakeWord = useCallback(() => {
+    if (orbState === 'idle') {
+      console.log('[WakeWord] Triggered! Starting voice session...');
+      toggleSession();
+    }
+  }, [orbState, toggleSession]);
+
+  const { isListening: isWakeWordListening, start: startWakeWord, isAvailable: isWakeWordAvailable } = useWakeWord({
+    mode: settings.voice.wake_word_mode,
+    onWakeWordDetected: handleWakeWord,
+    pauseWhileRecording: orbState !== 'idle',
+  });
+
+  // Auto-start wake word when mode is not manual
+  useEffect(() => {
+    if (settings.voice.wake_word_mode !== 'manual' && isWakeWordAvailable && token) {
+      startWakeWord();
+    }
+  }, [settings.voice.wake_word_mode, isWakeWordAvailable, token, startWakeWord]);
 
   const isDark = theme.statusBar === 'light';
 

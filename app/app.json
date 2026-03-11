@@ -14,7 +14,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "userInterfaceStyle": "automatic"
+      "userInterfaceStyle": "automatic",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Diva a besoin du micro pour écouter ta voix et détecter le mot-clé \"Diva\".",
+        "NSSpeechRecognitionUsageDescription": "Diva utilise la reconnaissance vocale pour détecter quand tu dis \"Diva\" et comprendre tes demandes."
+      }
     },
     "android": {
       "adaptiveIcon": {
