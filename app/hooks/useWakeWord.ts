@@ -17,11 +17,8 @@ import Voice, {
   type SpeechErrorEvent,
 } from '@react-native-voice/voice';
 
-// Conditional imports - these will fail in Expo Go
-let PorcupineManager: any = null;
-let Voice: any = null;
-
 // Try to import Porcupine (may not be installed)
+let PorcupineManager: any = null;
 try {
   PorcupineManager = require('@picovoice/porcupine-react-native').PorcupineManager;
 } catch {
