@@ -4,6 +4,10 @@
  * Uses @react-native-voice/voice (native iOS Speech Recognition)
  * to detect the keyword "Diva" in continuous listening mode.
  *
+ * IMPORTANT: Voice module is loaded dynamically to prevent TurboModule
+ * crash at startup. The module is only initialized when wake word
+ * mode is actually activated.
+ *
  * Supports three modes:
  * - always_on: listens continuously, restarts after each recognition
  * - smart: listens continuously but pauses in background
@@ -12,10 +16,6 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus, Platform } from 'react-native';
-import Voice, {
-  type SpeechResultsEvent,
-  type SpeechErrorEvent,
-} from '@react-native-voice/voice';
 
 type WakeWordMode = 'always_on' | 'smart' | 'manual';
 
@@ -24,6 +24,21 @@ const WAKE_KEYWORD = 'diva';
 const COOLDOWN_MS = 2000;
 // Restart delay after speech ends (ms)
 const RESTART_DELAY_MS = 500;
+
+// Dynamic Voice module reference — loaded lazily to avoid TurboModule crash
+let VoiceModule: any = null;
+
+async function getVoice(): Promise<any> {
+  if (VoiceModule) return VoiceModule;
+  try {
+    const mod = await import('@react-native-voice/voice');
+    VoiceModule = mod.default || mod;
+    return VoiceModule;
+  } catch (err) {
+    console.warn('[WakeWord] Failed to load Voice module:', err);
+    return null;
+  }
+}
 
 interface UseWakeWordOptions {
   mode: WakeWordMode;
@@ -43,16 +58,24 @@ export function useWakeWord({
   const lastTriggerRef = useRef(0);
   const shouldListenRef = useRef(false);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceRef = useRef<any>(null);
 
-  // Check availability on mount
+  // Check availability on mount — lazy load the module
   useEffect(() => {
-    // @react-native-voice/voice is available on iOS and Android
-    setIsAvailable(Platform.OS === 'ios' || Platform.OS === 'android');
-  }, []);
+    if (mode === 'manual') return;
+
+    let mounted = true;
+    getVoice().then((voice) => {
+      if (!mounted || !voice) return;
+      voiceRef.current = voice;
+      setIsAvailable(Platform.OS === 'ios' || Platform.OS === 'android');
+    });
+    return () => { mounted = false; };
+  }, [mode]);
 
   // Handle speech results — look for wake word
   const onSpeechResults = useCallback(
-    (event: SpeechResultsEvent) => {
+    (event: any) => {
       const now = Date.now();
       if (now - lastTriggerRef.current < COOLDOWN_MS) return;
 
@@ -62,7 +85,7 @@ export function useWakeWord({
           lastTriggerRef.current = now;
           console.log(`[WakeWord] Detected "${WAKE_KEYWORD}" in: "${transcript}"`);
           // Stop listening briefly, callback will handle activation
-          Voice.stop().catch(() => {});
+          voiceRef.current?.stop?.().catch(() => {});
           onWakeWordDetected();
           return;
         }
@@ -74,10 +97,9 @@ export function useWakeWord({
   // Handle speech end — restart listening if in continuous mode
   const onSpeechEnd = useCallback(() => {
     if (shouldListenRef.current && !pauseWhileRecording) {
-      // Small delay before restarting to avoid audio conflicts
       restartTimerRef.current = setTimeout(() => {
-        if (shouldListenRef.current) {
-          Voice.start('fr-FR').catch((err) => {
+        if (shouldListenRef.current && voiceRef.current) {
+          voiceRef.current.start('fr-FR').catch((err: any) => {
             console.warn('[WakeWord] Restart failed:', err);
           });
         }
@@ -86,43 +108,48 @@ export function useWakeWord({
   }, [pauseWhileRecording]);
 
   // Handle errors — restart on recoverable errors
-  const onSpeechError = useCallback((event: SpeechErrorEvent) => {
+  const onSpeechError = useCallback((event: any) => {
     const errorCode = event.error?.code;
     console.warn('[WakeWord] Error:', event.error?.message);
 
-    // Restart on common recoverable errors
     if (shouldListenRef.current && errorCode !== 'permissions') {
       restartTimerRef.current = setTimeout(() => {
-        if (shouldListenRef.current) {
-          Voice.start('fr-FR').catch(() => {});
+        if (shouldListenRef.current && voiceRef.current) {
+          voiceRef.current.start('fr-FR').catch(() => {});
         }
       }, RESTART_DELAY_MS * 2);
     }
   }, []);
 
-  // Register Voice callbacks
+  // Register Voice callbacks when module is available
   useEffect(() => {
-    Voice.onSpeechResults = onSpeechResults;
-    Voice.onSpeechEnd = onSpeechEnd;
-    Voice.onSpeechError = onSpeechError;
+    const voice = voiceRef.current;
+    if (!voice) return;
+
+    voice.onSpeechResults = onSpeechResults;
+    voice.onSpeechEnd = onSpeechEnd;
+    voice.onSpeechError = onSpeechError;
 
     return () => {
-      Voice.destroy().then(Voice.removeAllListeners).catch(() => {});
+      voice.destroy?.().then(() => voice.removeAllListeners?.()).catch(() => {});
       if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
     };
-  }, [onSpeechResults, onSpeechEnd, onSpeechError]);
+  }, [onSpeechResults, onSpeechEnd, onSpeechError, isAvailable]);
 
   // Handle app state changes for 'smart' mode
   useEffect(() => {
-    if (mode !== 'smart') return;
+    if (mode !== 'smart' || !voiceRef.current) return;
 
     const handleAppState = (state: AppStateStatus) => {
+      const voice = voiceRef.current;
+      if (!voice) return;
+
       if (state === 'active' && shouldListenRef.current) {
-        Voice.start('fr-FR').catch(() => {});
+        voice.start('fr-FR').catch(() => {});
         setIsListening(true);
         isListeningRef.current = true;
       } else if (state === 'background' && isListeningRef.current) {
-        Voice.stop().catch(() => {});
+        voice.stop().catch(() => {});
         setIsListening(false);
         isListeningRef.current = false;
       }
@@ -130,32 +157,39 @@ export function useWakeWord({
 
     const sub = AppState.addEventListener('change', handleAppState);
     return () => sub.remove();
-  }, [mode]);
+  }, [mode, isAvailable]);
 
   const start = useCallback(async () => {
     if (mode === 'manual') return;
-    if (!isAvailable) {
+
+    const voice = voiceRef.current || await getVoice();
+    if (!voice) {
       console.warn('[WakeWord] Speech recognition not available');
       return;
     }
+    voiceRef.current = voice;
 
     try {
       shouldListenRef.current = true;
-      await Voice.start('fr-FR');
+      await voice.start('fr-FR');
       setIsListening(true);
       isListeningRef.current = true;
       console.log(`[WakeWord] Listening started (mode: ${mode}, keyword: "${WAKE_KEYWORD}")`);
     } catch (err) {
       console.error('[WakeWord] Start failed:', err);
+      // Don't crash the app — just disable wake word
+      setIsAvailable(false);
     }
-  }, [mode, isAvailable]);
+  }, [mode]);
 
   const stop = useCallback(async () => {
     shouldListenRef.current = false;
     if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    const voice = voiceRef.current;
+    if (!voice) return;
     try {
-      await Voice.stop();
-      await Voice.destroy();
+      await voice.stop();
+      await voice.destroy();
     } catch {
       // ignore
     }
@@ -166,12 +200,15 @@ export function useWakeWord({
 
   // Pause/resume when main recording is active
   useEffect(() => {
+    const voice = voiceRef.current;
+    if (!voice) return;
+
     if (pauseWhileRecording && isListeningRef.current) {
-      Voice.stop().catch(() => {});
+      voice.stop().catch(() => {});
       setIsListening(false);
       isListeningRef.current = false;
     } else if (!pauseWhileRecording && shouldListenRef.current && !isListeningRef.current) {
-      Voice.start('fr-FR').catch(() => {});
+      voice.start('fr-FR').catch(() => {});
       setIsListening(true);
       isListeningRef.current = true;
     }
