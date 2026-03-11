@@ -10,7 +10,7 @@
  * - useToolExecution: Device integration tools
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Linking, Platform } from 'react-native';
+import { Linking, Platform, NativeModules } from 'react-native';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { isCancelCommand } from '../lib/cancelDetection';
@@ -452,6 +452,18 @@ export function useVoiceSession({
               .catch(err => console.warn('[History] Failed to save:', err));
             saveConversation(userMsg, assistantMsg)
               .catch(err => console.warn('[Memory] Failed to save:', err));
+            // Sync last exchange to iOS widget (App Group UserDefaults)
+            if (Platform.OS === 'ios' && NativeModules.DivaWidgetBridge) {
+              try {
+                NativeModules.DivaWidgetBridge.setWidgetData(JSON.stringify({
+                  lastUserMessage: userMsg.slice(0, 80),
+                  lastAIResponse: assistantMsg.slice(0, 120),
+                }));
+                NativeModules.DivaWidgetBridge.reloadAllTimelines?.();
+              } catch (e) {
+                // non-critical
+              }
+            }
             lastUserMessageRef.current = null;
             lastAssistantMessageRef.current = null;
           }

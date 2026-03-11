@@ -1,8 +1,10 @@
 /**
  * DivaWidget - iOS Home Screen Widget
  *
- * Tap the widget → opens Diva directly in listening mode
- * Design: dark background, brand gradient orb (cyan → indigo → violet)
+ * iOS 17+: Interactive widget with "Parler" button (AppIntent)
+ * iOS 16: Tap widget → opens Diva in listen mode via URL
+ *
+ * Design: dark bg, brand gradient orb (cyan → indigo → violet)
  */
 
 import WidgetKit
@@ -12,7 +14,8 @@ import SwiftUI
 
 struct DivaEntry: TimelineEntry {
     let date: Date
-    let lastMessage: String?
+    let lastUserMessage: String?
+    let lastAIResponse: String?
 }
 
 // MARK: - Provider
@@ -21,36 +24,61 @@ struct DivaProvider: TimelineProvider {
     private let appGroup = "group.fr.papote.diva"
 
     func placeholder(in context: Context) -> DivaEntry {
-        DivaEntry(date: Date(), lastMessage: nil)
+        DivaEntry(date: Date(), lastUserMessage: nil, lastAIResponse: nil)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (DivaEntry) -> Void) {
-        completion(DivaEntry(date: Date(), lastMessage: readLastMessage()))
+        completion(makeEntry())
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<DivaEntry>) -> Void) {
-        let entry = DivaEntry(date: Date(), lastMessage: readLastMessage())
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: Date())!
-        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+        let entry = makeEntry()
+        let next = Calendar.current.date(byAdding: .minute, value: 15, to: Date())!
+        completion(Timeline(entries: [entry], policy: .after(next)))
     }
 
-    private func readLastMessage() -> String? {
-        UserDefaults(suiteName: appGroup)?.string(forKey: "lastInteraction")
+    private func makeEntry() -> DivaEntry {
+        let defaults = UserDefaults(suiteName: appGroup)
+        return DivaEntry(
+            date: Date(),
+            lastUserMessage: defaults?.string(forKey: "lastUserMessage"),
+            lastAIResponse: defaults?.string(forKey: "lastAIResponse")
+        )
     }
 }
 
 // MARK: - Design Tokens
 
-private let brandCyan    = Color(red: 0.49, green: 0.83, blue: 0.91)  // #7DD3E8
-private let brandIndigo  = Color(red: 0.35, green: 0.34, blue: 0.84)  // #5856D6
-private let brandViolet  = Color(red: 0.29, green: 0.29, blue: 0.57)  // #4A4B91
-private let bgDark       = Color(red: 0.05, green: 0.05, blue: 0.08)  // #0D0D14
+private let brandCyan   = Color(red: 0.49, green: 0.83, blue: 0.91)
+private let brandIndigo = Color(red: 0.35, green: 0.34, blue: 0.84)
+private let brandViolet = Color(red: 0.29, green: 0.29, blue: 0.57)
+private let bgDark      = Color(red: 0.05, green: 0.05, blue: 0.08)
 
 private var orbGradient: AngularGradient {
     AngularGradient(
         gradient: Gradient(colors: [brandCyan, brandIndigo, brandViolet, brandIndigo, brandCyan]),
         center: .center
     )
+}
+
+// MARK: - Orb View Component
+
+struct OrbView: View {
+    let size: CGFloat
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(orbGradient)
+                .frame(width: size, height: size)
+                .shadow(color: brandIndigo.opacity(0.7), radius: size * 0.2, x: 0, y: 4)
+            Circle()
+                .fill(bgDark.opacity(0.35))
+                .frame(width: size * 0.70, height: size * 0.70)
+            Image(systemName: "waveform")
+                .font(.system(size: size * 0.28, weight: .semibold))
+                .foregroundColor(.white)
+        }
+    }
 }
 
 // MARK: - Small Widget
@@ -60,35 +88,35 @@ struct SmallWidgetView: View {
 
     var body: some View {
         ZStack {
-            bgDark.ignoresSafeArea()
+            bgDark
 
             VStack(spacing: 10) {
-                // Orb
-                ZStack {
-                    Circle()
-                        .fill(orbGradient)
-                        .frame(width: 56, height: 56)
-                        .shadow(color: brandIndigo.opacity(0.6), radius: 12, x: 0, y: 4)
+                OrbView(size: 58)
 
-                    Circle()
-                        .fill(bgDark.opacity(0.45))
-                        .frame(width: 40, height: 40)
-
-                    Image(systemName: "waveform")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                }
-
-                // Name
                 Text("Diva")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
 
-                // Hint
-                Text("Appuie pour parler")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.5))
-                    .multilineTextAlignment(.center)
+                if #available(iOS 17.0, *) {
+                    Button(intent: StartListeningIntent()) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 10))
+                            Text("Parler")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundColor(bgDark)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(brandCyan)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text("Appuie pour parler")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.5))
+                }
             }
             .padding(12)
         }
@@ -103,78 +131,89 @@ struct MediumWidgetView: View {
 
     var body: some View {
         ZStack {
-            bgDark.ignoresSafeArea()
+            bgDark
 
-            HStack(spacing: 16) {
-                // Left — orb
-                VStack(spacing: 8) {
-                    ZStack {
-                        Circle()
-                            .fill(orbGradient)
-                            .frame(width: 60, height: 60)
-                            .shadow(color: brandIndigo.opacity(0.7), radius: 14, x: 0, y: 4)
-
-                        Circle()
-                            .fill(bgDark.opacity(0.4))
-                            .frame(width: 42, height: 42)
-
-                        Image(systemName: "waveform")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(.white)
-                    }
+            HStack(spacing: 0) {
+                // Left panel — orb + button
+                VStack(spacing: 10) {
+                    OrbView(size: 54)
 
                     Text("Diva")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
+
+                    if #available(iOS 17.0, *) {
+                        Button(intent: StartListeningIntent()) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "mic.fill")
+                                    .font(.system(size: 9))
+                                Text("Parler")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            .foregroundColor(bgDark)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(brandCyan)
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .frame(width: 80)
+                .frame(width: 90)
+                .padding(.leading, 14)
 
                 // Divider
                 Rectangle()
-                    .fill(Color.white.opacity(0.08))
+                    .fill(Color.white.opacity(0.07))
                     .frame(width: 1)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 10)
 
-                // Right — last message or CTA
-                VStack(alignment: .leading, spacing: 6) {
-                    if let msg = entry.lastMessage, !msg.isEmpty {
-                        Text("Dernier échange")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(Color.white.opacity(0.4))
-                            .textCase(.uppercase)
-                            .tracking(0.5)
+                // Right panel — conversation
+                VStack(alignment: .leading, spacing: 8) {
+                    if let userMsg = entry.lastUserMessage, let aiResp = entry.lastAIResponse {
+                        // User bubble
+                        HStack {
+                            Spacer()
+                            Text(userMsg)
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.9))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(Color.white.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .lineLimit(2)
+                        }
 
-                        Text(msg)
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(Color.white.opacity(0.85))
-                            .lineLimit(3)
-                            .fixedSize(horizontal: false, vertical: true)
+                        // AI bubble
+                        HStack {
+                            Text(aiResp)
+                                .font(.system(size: 11))
+                                .foregroundColor(brandCyan)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(brandIndigo.opacity(0.25))
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .lineLimit(2)
+                            Spacer()
+                        }
                     } else {
                         Text("Bonjour 👋")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white)
 
-                        Text("Appuie pour démarrer\nune conversation")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(Color.white.opacity(0.5))
+                        Text("Appuie sur Parler pour\ndémarrer une conversation")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.45))
                             .lineLimit(2)
                     }
 
                     Spacer()
-
-                    HStack(spacing: 4) {
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 9))
-                            .foregroundColor(brandCyan)
-                        Text("Tap pour parler")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(brandCyan)
-                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, 14)
+                .padding(.vertical, 12)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
         }
         .widgetURL(URL(string: "diva:///?widget=true"))
     }
@@ -211,6 +250,7 @@ struct DivaWidget: Widget {
         .configurationDisplayName("Diva")
         .description("Lance une conversation en un tap")
         .supportedFamilies([.systemSmall, .systemMedium])
+        .contentMarginsDisabled()
     }
 }
 
@@ -219,11 +259,15 @@ struct DivaWidget: Widget {
 struct DivaWidget_Previews: PreviewProvider {
     static var previews: some View {
         Group {
-            DivaWidgetEntryView(entry: DivaEntry(date: Date(), lastMessage: nil))
+            DivaWidgetEntryView(entry: DivaEntry(date: Date(), lastUserMessage: nil, lastAIResponse: nil))
                 .previewContext(WidgetPreviewContext(family: .systemSmall))
 
-            DivaWidgetEntryView(entry: DivaEntry(date: Date(), lastMessage: "Rappelle-moi d'appeler maman demain matin"))
-                .previewContext(WidgetPreviewContext(family: .systemMedium))
+            DivaWidgetEntryView(entry: DivaEntry(
+                date: Date(),
+                lastUserMessage: "C'est quoi la météo demain ?",
+                lastAIResponse: "Demain il fera 18°C et ensoleillé à Paris 🌤️"
+            ))
+            .previewContext(WidgetPreviewContext(family: .systemMedium))
         }
     }
 }
