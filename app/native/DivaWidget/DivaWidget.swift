@@ -41,7 +41,7 @@ struct DivaProvider: TimelineProvider {
     
     private func getLastInteraction() -> String? {
         // Read from shared UserDefaults (App Group)
-        let defaults = UserDefaults(suiteName: "group.com.diva.app")
+        let defaults = UserDefaults(suiteName: "group.fr.papote.diva")
         return defaults?.string(forKey: "lastInteraction")
     }
 }

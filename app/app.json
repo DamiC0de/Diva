@@ -15,14 +15,14 @@
     "ios": {
       "supportsTablet": true,
       "userInterfaceStyle": "automatic",
-      "bundleIdentifier": "com.diva.app",
+      "bundleIdentifier": "fr.papote.diva",
       "buildNumber": "1",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Diva a besoin du micro pour la reconnaissance vocale",
         "NSSpeechRecognitionUsageDescription": "Diva utilise la reconnaissance vocale pour comprendre tes commandes"
       },
       "entitlements": {
-        "com.apple.security.application-groups": ["group.com.diva.app"]
+        "com.apple.security.application-groups": ["group.fr.papote.diva"]
       }
     },
     "android": {
@@ -43,7 +43,8 @@
       "expo-router",
       "expo-font",
       "expo-secure-store",
-      "./modules/notification-reader/app.plugin"
+      "./modules/notification-reader/app.plugin",
+      "./plugins/withDivaWidget"
     ],
     "extra": {
       "eas": {
