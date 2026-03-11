@@ -238,17 +238,8 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
       required: ['url'],
     },
   },
-  {
-    name: 'web_search',
-    description: "Rechercher une information sur le web. ATTENTION: N'utilise PAS ce tool pour glucose.press — utilise get_glucose à la place !",
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        query: { type: 'string', description: 'La requête de recherche' },
-      },
-      required: ['query'],
-    },
-  },
+  // web_search is now handled by Anthropic's native server-side tool (web_search_20250305)
+  // It's added separately in the API call, not as a custom tool here.
   {
     name: 'delete_memory',
     description: "Supprimer un souvenir/mémoire quand l'utilisateur dit 'oublie que...', 'efface ce que tu sais sur...'. Recherche la mémoire la plus pertinente et la supprime.",
@@ -1529,6 +1520,8 @@ export class Orchestrator {
             break;
           }
           case 'web_search': {
+            // This case should rarely be hit now — web search is handled natively by Anthropic.
+            // But keep as fallback in case the model calls it as a custom tool.
             const searchQuery = input.query as string;
             try {
               const searchResult = await executeWebSearch(searchQuery);

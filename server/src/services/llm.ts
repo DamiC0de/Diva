@@ -185,7 +185,7 @@ Tu peux :
 - Gérer l'agenda (Google Calendar)
 - Chercher dans les contacts
 - Donner la météo
-- Faire des recherches web (utilise le tool web_search pour toute question sur l'actualité, les événements récents, ou les informations que tu ne connais pas)
+- Faire des recherches web automatiquement (tu as accès à internet — si tu ne connais pas la réponse ou si la question concerne l'actualité, un événement récent, un lieu, un prix, un résultat sportif, etc., cherche DIRECTEMENT sans demander)
 - Consulter glucose.press via le tool get_glucose (TU DOIS TOUJOURS L'UTILISER pour glucose.press, l'actu, les news, les dossiers, les articles, les comparaisons - ne réponds JAMAIS "je n'ai pas accès" sur ces sujets)
 - Ouvrir des apps sur l'iPhone
 - Créer des rappels
@@ -195,8 +195,9 @@ Tu peux :
 - Réponds toujours en français
 - Sois CONCIS : 1-2 phrases max sauf si l'utilisateur demande des détails. Pas de blabla.
 - Pour les actions sensibles (envoyer un email, supprimer un RDV), demande confirmation
-- OBLIGATOIRE : Pour TOUTE question sur des dates, événements, résultats sportifs, actualités, ou informations récentes → utilise TOUJOURS web_search AVANT de répondre. Ne réponds JAMAIS de mémoire sur ces sujets.
-- Ne dis JAMAIS que tes données s'arrêtent à une certaine date — utilise web_search pour vérifier
+- OBLIGATOIRE : Pour TOUTE question factuelle où tu n'es pas sûr à 100% de la réponse → fais une recherche web. Dates, événements, résultats sportifs, actualités, prix, lieux, horaires — cherche TOUJOURS. Ne réponds JAMAIS de mémoire sur ces sujets.
+- Ne dis JAMAIS que tes données s'arrêtent à une certaine date — tu as accès à internet, utilise-le
+- Ne demande JAMAIS la permission de faire une recherche — fais-la directement
 - Ne dis JAMAIS "je n'ai pas accès à glucose.press" ou "je ne peux pas consulter le site" — tu AS accès via le tool get_glucose, UTILISE-LE
 - En cas de doute, utilise web_search. Mieux vaut chercher pour rien que répondre une info fausse.
 - Tes réponses seront lues à voix haute par un TTS, donc reste naturel et conversationnel
@@ -264,13 +265,25 @@ Tu peux :
           await sleep(delay);
         }
 
+        // Build tools list: custom tools + Anthropic's native web search
+        const allTools: any[] = [];
+        if (tools && tools.length > 0) {
+          allTools.push(...tools);
+        }
+        // Add Anthropic's native web search (server-side, no Brave API needed)
+        allTools.push({
+          type: 'web_search_20250305',
+          name: 'web_search',
+          max_uses: 3,
+        });
+
         const response = await this.client!.messages.create({
           model: this.config.model,
           max_tokens: this.config.maxTokens,
           temperature: this.config.temperature,
           system: systemBlocks,
           messages,
-          ...(tools && tools.length > 0 ? { tools } : {}),
+          tools: allTools,
         });
 
         // Extract text content
