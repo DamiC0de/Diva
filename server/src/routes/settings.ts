@@ -23,8 +23,8 @@ export async function settingsRoutes(app: FastifyInstance) {
       .single();
 
     if (error && error.code === 'PGRST116') {
-      // No row yet — create one with defaults
-      await db.from('users').upsert({ id: request.userId, settings: {} });
+      // No row yet — user should exist from auth, just return defaults
+      app.log.warn({ msg: 'No user row found for settings', userId: request.userId });
       return { settings: {} };
     }
 
@@ -56,9 +56,11 @@ export async function settingsRoutes(app: FastifyInstance) {
 
     const merged = deepMerge(current?.settings ?? {}, newSettings);
 
+    // Use UPDATE instead of UPSERT to avoid NOT NULL constraint on email
     const { data, error } = await db
       .from('users')
-      .upsert({ id: request.userId, settings: merged })
+      .update({ settings: merged })
+      .eq('id', request.userId)
       .select('settings')
       .single();
 
