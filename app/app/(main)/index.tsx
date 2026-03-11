@@ -2,8 +2,8 @@
  * DIVA — Main Screen with Mascot Orb
  * 2026 Design: Dark-first, Lucide icons, mascot-centered
  */
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Text, Pressable } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, StyleSheet, Text, Pressable, AppState, NativeModules } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -79,7 +79,7 @@ export default function OrbScreen() {
 
   const isDark = theme.statusBar === 'light';
 
-  // Auto-start listening when opened from widget
+  // Auto-start listening when opened from widget via URL param (fallback)
   useEffect(() => {
     if (widget === 'true' && orbState === 'idle' && token) {
       const timer = setTimeout(() => toggleSession(), 600);
@@ -87,6 +87,34 @@ export default function OrbScreen() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widget, token]); // run once on mount
+
+  // Auto-start listening via AppIntent UserDefaults trigger (iOS 17 widget button)
+  const appStateRef = useRef(AppState.currentState);
+  useEffect(() => {
+    const checkWidgetTrigger = () => {
+      const bridge = NativeModules.DivaWidgetBridge;
+      if (bridge?.checkAndClearWidgetTrigger) {
+        bridge.checkAndClearWidgetTrigger((triggered: boolean) => {
+          if (triggered && orbState === 'idle' && token) {
+            setTimeout(() => toggleSession(), 400);
+          }
+        });
+      }
+    };
+
+    // Check on mount (cold start from widget)
+    if (token) checkWidgetTrigger();
+
+    // Check whenever app comes to foreground
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
+        if (token) checkWidgetTrigger();
+      }
+      appStateRef.current = nextState;
+    });
+    return () => sub.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, orbState]);
 
   return (
     <View style={styles.container}>

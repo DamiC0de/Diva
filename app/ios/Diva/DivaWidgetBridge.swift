@@ -1,8 +1,9 @@
 /**
  * DivaWidgetBridge.swift
  *
- * React Native bridge to update the Diva iOS widget via App Group UserDefaults.
- * Called from useVoiceSession after each conversation exchange.
+ * React Native bridge to:
+ * 1. Update the Diva iOS widget via App Group UserDefaults.
+ * 2. Check if the user tapped "Parler" in the widget (widgetListenTrigger).
  */
 
 import Foundation
@@ -34,6 +35,22 @@ class DivaWidgetBridge: NSObject {
     /// Reload the widget timeline so the new data is displayed.
     @objc func reloadAllTimelines() {
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Check if the widget "Parler" button was tapped recently (within 5s).
+    /// Clears the flag after reading.
+    /// Callback: (triggered: Bool) — true if the user tapped Parler from the widget.
+    @objc func checkAndClearWidgetTrigger(_ callback: @escaping RCTResponseSenderBlock) {
+        guard let defaults = UserDefaults(suiteName: appGroupId) else {
+            callback([false])
+            return
+        }
+        let timestamp = defaults.double(forKey: "widgetListenTrigger")
+        let wasTriggered = timestamp > 0 && (Date().timeIntervalSince1970 - timestamp) < 5.0
+        // Clear so it doesn't fire again
+        defaults.removeObject(forKey: "widgetListenTrigger")
+        defaults.synchronize()
+        callback([wasTriggered])
     }
 
     @objc static func requiresMainQueueSetup() -> Bool {

@@ -10,5 +10,6 @@
 
 RCT_EXTERN_METHOD(setWidgetData:(NSString *)json)
 RCT_EXTERN_METHOD(reloadAllTimelines)
+RCT_EXTERN_METHOD(checkAndClearWidgetTrigger:(RCTResponseSenderBlock)callback)
 
 @end
