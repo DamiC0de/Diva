@@ -27,48 +27,71 @@ public class DivaAmbientModule: Module {
         Events("onWakeWordDetected", "onStatusChange", "onError")
         
         // Start background listening
-        AsyncFunction("startListening") { [weak self] in
-            guard let self = self else { return }
-            
-            // Request permissions first
-            let micGranted = await self.requestMicrophonePermission()
-            guard micGranted else {
-                self.emitError(message: "Microphone permission denied", code: "mic_denied")
-                return
-            }
-            
-            let speechGranted = await self.requestSpeechPermission()
-            guard speechGranted else {
-                self.emitError(message: "Speech recognition permission denied", code: "speech_denied")
-                return
-            }
-            
-            do {
-                if self.audioManager == nil {
-                    self.audioManager = BackgroundAudioManager()
-                    self.audioManager?.delegate = self
+        AsyncFunction("startListening") { (promise: Promise) in
+            // Request microphone permission
+            AVAudioApplication.requestRecordPermission { [weak self] micGranted in
+                guard let self = self else {
+                    promise.resolve(nil)
+                    return
                 }
-                try self.audioManager?.start()
-                self.updateState(.listening)
-            } catch {
-                self.emitError(message: "Failed to start audio: \(error.localizedDescription)", code: "start_failed")
-                self.updateState(.error)
+                
+                guard micGranted else {
+                    self.emitError(message: "Microphone permission denied", code: "mic_denied")
+                    promise.resolve(nil)
+                    return
+                }
+                
+                // Request speech recognition permission
+                SFSpeechRecognizer.requestAuthorization { [weak self] status in
+                    guard let self = self else {
+                        promise.resolve(nil)
+                        return
+                    }
+                    
+                    guard status == .authorized else {
+                        self.emitError(message: "Speech recognition permission denied", code: "speech_denied")
+                        promise.resolve(nil)
+                        return
+                    }
+                    
+                    // Start on main thread
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else {
+                            promise.resolve(nil)
+                            return
+                        }
+                        
+                        do {
+                            if self.audioManager == nil {
+                                self.audioManager = BackgroundAudioManager()
+                                self.audioManager?.delegate = self
+                            }
+                            try self.audioManager?.start()
+                            self.updateState(.listening)
+                            promise.resolve(nil)
+                        } catch {
+                            self.emitError(message: "Failed to start audio: \(error.localizedDescription)", code: "start_failed")
+                            self.updateState(.error)
+                            promise.reject("START_FAILED", error.localizedDescription)
+                        }
+                    }
+                }
             }
         }
         
         // Stop background listening
-        AsyncFunction("stopListening") { [weak self] in
+        Function("stopListening") { [weak self] in
             self?.audioManager?.stop()
             self?.updateState(.idle)
         }
         
         // Check if currently listening
-        AsyncFunction("isListening") { [weak self] -> Bool in
+        Function("isListening") { [weak self] -> Bool in
             return self?.audioManager?.isRunning ?? false
         }
         
         // Get current status
-        AsyncFunction("getStatus") { [weak self] -> [String: Any] in
+        Function("getStatus") { [weak self] -> [String: Any] in
             let manager = self?.audioManager
             return [
                 "state": self?.currentState.rawValue ?? "idle",
@@ -77,24 +100,6 @@ public class DivaAmbientModule: Module {
                 "batteryThreshold": 30,
                 "isSpeechRecognitionActive": manager?.isSpeechActive ?? false,
             ]
-        }
-    }
-    
-    // MARK: - Permissions
-    
-    private func requestMicrophonePermission() async -> Bool {
-        return await withCheckedContinuation { continuation in
-            AVAudioApplication.requestRecordPermission { granted in
-                continuation.resume(returning: granted)
-            }
-        }
-    }
-    
-    private func requestSpeechPermission() async -> Bool {
-        return await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in
-                continuation.resume(returning: status == .authorized)
-            }
         }
     }
     

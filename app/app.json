@@ -15,17 +15,20 @@
     "ios": {
       "supportsTablet": true,
       "userInterfaceStyle": "automatic",
-      "infoPlist": {
-        "NSMicrophoneUsageDescription": "Diva a besoin du micro pour écouter ta voix et détecter le mot-clé \"Diva\".",
-        "NSSpeechRecognitionUsageDescription": "Diva utilise la reconnaissance vocale pour détecter quand tu dis \"Diva\" et comprendre tes demandes.",
-        "NSPhotoLibraryUsageDescription": "Diva peut accéder à tes photos pour personnaliser ton profil.",
-        "NSCameraUsageDescription": "Diva peut utiliser la caméra pour prendre une photo de profil."
-      },
       "bundleIdentifier": "fr.papote.diva",
       "entitlements": {
         "com.apple.security.application-groups": [
           "group.fr.papote.diva"
         ]
+      },
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Diva a besoin du micro pour écouter ta voix et détecter le mot-clé \"Diva\".",
+        "NSSpeechRecognitionUsageDescription": "Diva utilise la reconnaissance vocale pour détecter quand tu dis \"Diva\" et comprendre tes demandes.",
+        "NSPhotoLibraryUsageDescription": "Diva peut accéder à tes photos pour personnaliser ton profil.",
+        "NSCameraUsageDescription": "Diva peut utiliser la caméra pour prendre une photo de profil.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       }
     },
     "android": {

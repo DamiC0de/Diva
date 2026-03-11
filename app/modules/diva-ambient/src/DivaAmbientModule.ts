@@ -3,17 +3,20 @@ import type { AmbientStatus, WakeWordEvent } from './types';
 
 // Native module — will throw on Android (iOS only)
 let nativeModule: any = null;
+let emitter: any = null;
+
 try {
   nativeModule = requireNativeModule('DivaAmbient');
-} catch {
-  console.warn('[DivaAmbient] Native module not available (Android or missing prebuild)');
+  emitter = new EventEmitter(nativeModule);
+  console.log('[DivaAmbient] Native module loaded successfully');
+} catch (err) {
+  console.warn('[DivaAmbient] Native module not available:', err);
 }
-
-const emitter = nativeModule ? new EventEmitter(nativeModule) : null;
 
 const DivaAmbient = {
   /**
    * Start background listening (VAD + wake word detection)
+   * This is async because it requests permissions
    */
   async startListening(): Promise<void> {
     if (!nativeModule) {
@@ -24,25 +27,25 @@ const DivaAmbient = {
   },
 
   /**
-   * Stop background listening
+   * Stop background listening (sync)
    */
-  async stopListening(): Promise<void> {
+  stopListening(): void {
     if (!nativeModule) return;
-    return nativeModule.stopListening();
+    nativeModule.stopListening();
   },
 
   /**
-   * Check if currently listening
+   * Check if currently listening (sync)
    */
-  async isListening(): Promise<boolean> {
+  isListening(): boolean {
     if (!nativeModule) return false;
     return nativeModule.isListening();
   },
 
   /**
-   * Get current ambient status
+   * Get current ambient status (sync)
    */
-  async getStatus(): Promise<AmbientStatus> {
+  getStatus(): AmbientStatus {
     if (!nativeModule) {
       return {
         state: 'idle',

@@ -39,12 +39,15 @@ export function useDivaAmbient({
       setState('error');
     });
 
-    // Get initial status
-    DivaAmbient.getStatus().then((status) => {
+    // Get initial status (sync call)
+    try {
+      const status = DivaAmbient.getStatus();
       setState(status.state);
       setIsListening(status.isListening);
       setIsAvailable(status.isAvailable);
-    });
+    } catch (err) {
+      console.warn('[DivaAmbient] Failed to get initial status:', err);
+    }
 
     return () => {
       statusSub.remove();
@@ -67,7 +70,7 @@ export function useDivaAmbient({
       DivaAmbient.stopListening();
     } else if (!paused && wasListeningBeforePause.current) {
       wasListeningBeforePause.current = false;
-      DivaAmbient.startListening();
+      DivaAmbient.startListening().catch(() => {});
     }
   }, [paused, isListening]);
 

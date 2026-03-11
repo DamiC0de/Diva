@@ -15,6 +15,7 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.get('/api/v1/settings', {
     preHandler: [app.authenticate],
   }, async (request, reply) => {
+    app.log.info({ msg: 'GET /api/v1/settings', userId: request.userId });
     const { data, error } = await db
       .from('users')
       .select('settings')
@@ -40,6 +41,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     preHandler: [app.authenticate],
   }, async (request, reply) => {
     const { settings: newSettings } = request.body;
+    app.log.info({ msg: 'PATCH /api/v1/settings', userId: request.userId, settings: newSettings });
 
     if (!newSettings || typeof newSettings !== 'object') {
       return reply.code(400).send({ error: 'Settings object required' });
