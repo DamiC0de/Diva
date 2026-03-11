@@ -1138,13 +1138,15 @@ export class Orchestrator {
       const isSmallTalk = /^(salut|bonjour|hey|coucou|ça va|comment vas|merci|au revoir|bonne nuit|ok|d'accord|oui|non|cool|super|parfait)/i.test(textLower);
       const isIdentityQuestion = /(qui es[- ]tu|t['']?es qui|c['']?est quoi (ton nom|diva)|comment tu t['']?appelles|tu t['']?appelles comment|pr[ée]sente[- ]?toi|parle[- ]?moi de toi)/i.test(textLower);
       const isConfirmation = /^(oui|non|ok|d'accord|vas[- ]?y|fais[- ]?le|ajoute|confirme|annule|stop|arrête|c'est bon|c'est ça|exactement|tout à fait|je veux bien|s'il te pla[iî]t|please)/i.test(textLower);
-      const isTooShort = text.trim().split(/\s+/).length <= 4;
+      const isTooShort = text.trim().split(/\s+/).length <= 2; // Lowered from 4 — "quand joue le PSG?" is 4 words but needs search
       const isPersonal = /mon\s+(agenda|calendrier|planning|rdv|rendez|mail|message|notif)/i.test(textLower);
       const isActionRequest = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|met|mets)[\s-]/i.test(textLower);
       // Skip search for conversational questions that don't need web search
       const isConversational = /(tu m['']?entends|tu es l[àa]|tu fonctionnes|tu marches|allo|tu fais quoi|tu sers [àa] quoi|qu['']?est[- ]ce que tu (es|fais|peux)|tu peux (faire|m['']?aider)|aide[- ]?moi|raconte|blague|histoire|chante)/i.test(textLower);
-      const isSimpleQuestion = text.trim().split(/\s+/).length <= 8 && /^(est[- ]ce que|tu |comment |pourquoi tu|qu['']?est)/i.test(textLower);
-      const skipSearch = isSmallTalk || isIdentityQuestion || isConfirmation || isTooShort || isPersonal || isActionRequest || isConversational || isSimpleQuestion;
+      const isSimpleQuestion = text.trim().split(/\s+/).length <= 5 && /^(est[- ]ce que tu|tu |comment tu|pourquoi tu)/i.test(textLower);
+      // Force search for factual/time-sensitive questions (sports, events, dates, prices, news)
+      const needsFactualSearch = /(quand|quelle? heure|score|r[ée]sultat|classement|prochain match|joue|gagn[ée]|perdu|combien co[uû]te|prix de|cours de|bourse|bitcoin|crypto|m[ée]t[ée]o|temp[ée]rature|pr[ée]sident|ministre|[ée]lection|guerre|mort|n[ée]|actualit|derni[eè]re|nouveau|sortie? de|date de|qui a |où est |où se |c['']?est qui |c['']?est quoi )/i.test(textLower);
+      const skipSearch = (isSmallTalk || isIdentityQuestion || isConfirmation || isTooShort || isPersonal || isActionRequest || isConversational || isSimpleQuestion) && !needsFactualSearch;
 
       let preSearchContext = '';
       if (!skipSearch) {
@@ -1197,7 +1199,7 @@ export class Orchestrator {
       };
 
       // Check if this looks like a tool request (action words)
-      const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail|glucose|news|actu|infos|presse|articles|dossier|comparaison|synthèse|journée|aujourd'hui|hier|résume)/i.test(text);
+      const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail|glucose|news|actu|infos|presse|articles|dossier|comparaison|synthèse|journée|aujourd'hui|hier|résume|cherche|recherche|google|internet|trouve|v[ée]rifie)/i.test(text);
       this.logger.info({ msg: 'Tool check', text: text.substring(0, 50), mightNeedTools });
 
       // FORCE glucose tool when glucose.press is mentioned (bypass LLM choice)
