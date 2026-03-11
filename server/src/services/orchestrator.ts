@@ -897,6 +897,16 @@ export class Orchestrator {
         this.clientMemory.set(userId, (message as MemoryContextMessage).memory);
         this.logger.info({ msg: 'Client memory context received', userId, size: (message as MemoryContextMessage).memory.length });
         break;
+
+      case 'get_settings':
+        // Settings via WebSocket (fallback when HTTP is blocked by ATS)
+        this.handleGetSettings(socket, userId).catch(e => this.logger.error({ msg: 'WS get_settings error', error: e }));
+        break;
+
+      case 'update_settings':
+        // Save settings via WebSocket
+        this.handleUpdateSettings(socket, userId, (message as any).settings).catch(e => this.logger.error({ msg: 'WS update_settings error', error: e }));
+        break;
     }
   }
 
@@ -1977,6 +1987,69 @@ export class Orchestrator {
       this.logger.error({ msg: 'Failed to load history', error });
       return [];
     }
+  }
+
+  // --- Settings via WebSocket (bypass ATS) ---
+
+  private async handleGetSettings(socket: WebSocket, userId: string) {
+    try {
+      const { data, error } = await getSupabase()
+        .from('users')
+        .select('settings')
+        .eq('id', userId)
+        .single();
+
+      const settings = data?.settings ?? {};
+      socket.send(JSON.stringify({ type: 'settings', settings }));
+      this.logger.info({ msg: 'WS: sent settings', userId });
+    } catch (err) {
+      this.logger.error({ msg: 'WS: failed to get settings', error: err });
+      socket.send(JSON.stringify({ type: 'settings', settings: {} }));
+    }
+  }
+
+  private async handleUpdateSettings(socket: WebSocket, userId: string, newSettings: any) {
+    try {
+      // Deep merge with existing
+      const { data: current } = await getSupabase()
+        .from('users')
+        .select('settings')
+        .eq('id', userId)
+        .single();
+
+      const merged = this.deepMerge(current?.settings ?? {}, newSettings ?? {});
+
+      const { data, error } = await getSupabase()
+        .from('users')
+        .update({ settings: merged })
+        .eq('id', userId)
+        .select('settings')
+        .single();
+
+      if (error) throw error;
+
+      // Invalidate cache
+      this.settingsCache.delete(userId);
+
+      socket.send(JSON.stringify({ type: 'settings_saved', settings: data?.settings }));
+      this.logger.info({ msg: 'WS: settings saved', userId, settings: newSettings });
+    } catch (err) {
+      this.logger.error({ msg: 'WS: failed to save settings', error: err });
+      socket.send(JSON.stringify({ type: 'settings_error', error: 'Failed to save' }));
+    }
+  }
+
+  private deepMerge(target: any, source: any): any {
+    const result = { ...target };
+    for (const key of Object.keys(source)) {
+      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key]) &&
+          target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])) {
+        result[key] = this.deepMerge(target[key], source[key]);
+      } else {
+        result[key] = source[key];
+      }
+    }
+    return result;
   }
 
   /** Retrieve relevant memories via RAG */
