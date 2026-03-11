@@ -45,7 +45,8 @@
       "expo-font",
       "expo-secure-store",
       "./modules/notification-reader/app.plugin",
-      "./plugins/withDivaWidget"
+"./plugins/withDivaWidget",
+      "./modules/diva-ambient/app.plugin"
     ],
     "extra": {
       "eas": {

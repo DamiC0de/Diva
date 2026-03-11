@@ -14,7 +14,7 @@ import { ErrorOverlay } from '../../components/ErrorOverlay';
 import { useVoiceSession } from '../../hooks/useVoiceSession';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import { useSettings } from '../../hooks/useSettings';
-import { useWakeWord } from '../../hooks/useWakeWord';
+import { useDivaAmbient } from '../../modules/diva-ambient';
 import { useTheme } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 
@@ -62,26 +62,19 @@ export default function OrbScreen() {
     onConversationModeChange: handleConversationModeChange,
   });
 
-  // Wake word detection — activates voice session when "Diva" is heard
+  // Diva Ambient Mode — native background wake word detection
   const handleWakeWord = useCallback(() => {
     if (orbState === 'idle') {
-      console.log('[WakeWord] Triggered! Starting voice session...');
+      console.log('[DivaAmbient] Wake word detected! Starting voice session...');
       toggleSession();
     }
   }, [orbState, toggleSession]);
 
-  const { isListening: isWakeWordListening, start: startWakeWord, isAvailable: isWakeWordAvailable } = useWakeWord({
-    mode: settings.voice.wake_word_mode,
+  const { isListening: isAmbientListening, state: ambientState } = useDivaAmbient({
     onWakeWordDetected: handleWakeWord,
-    pauseWhileRecording: orbState !== 'idle',
+    autoStart: settings.voice.wake_word_mode !== 'manual' && !!token,
+    paused: orbState !== 'idle',
   });
-
-  // Auto-start wake word when mode is not manual
-  useEffect(() => {
-    if (settings.voice.wake_word_mode !== 'manual' && isWakeWordAvailable && token) {
-      startWakeWord();
-    }
-  }, [settings.voice.wake_word_mode, isWakeWordAvailable, token, startWakeWord]);
 
   const isDark = theme.statusBar === 'light';
 
