@@ -1135,18 +1135,16 @@ export class Orchestrator {
       if (userHist) userHist.lastActivity = Date.now();
 
       // Pre-search: skip for small talk, confirmations, short queries, or personal questions
-      const isSmallTalk = /^(salut|bonjour|hey|coucou|ça va|comment vas|merci|au revoir|bonne nuit|ok|d'accord|oui|non|cool|super|parfait)/i.test(textLower);
+      // PHILOSOPHY: Always search by default. Only skip for obvious small talk, confirmations, 
+      // and questions about Diva herself. Better to search for nothing than miss real info.
+      const isSmallTalk = /^(salut|bonjour|hey|coucou|ça va|comment vas|merci|au revoir|bonne nuit|cool|super|parfait|top|génial|nice|ok merci|merci beaucoup)/i.test(textLower);
       const isIdentityQuestion = /(qui es[- ]tu|t['']?es qui|c['']?est quoi (ton nom|diva)|comment tu t['']?appelles|tu t['']?appelles comment|pr[ée]sente[- ]?toi|parle[- ]?moi de toi)/i.test(textLower);
-      const isConfirmation = /^(oui|non|ok|d'accord|vas[- ]?y|fais[- ]?le|ajoute|confirme|annule|stop|arrête|c'est bon|c'est ça|exactement|tout à fait|je veux bien|s'il te pla[iî]t|please)/i.test(textLower);
-      const isTooShort = text.trim().split(/\s+/).length <= 2; // Lowered from 4 — "quand joue le PSG?" is 4 words but needs search
-      const isPersonal = /mon\s+(agenda|calendrier|planning|rdv|rendez|mail|message|notif)/i.test(textLower);
-      const isActionRequest = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|met|mets)[\s-]/i.test(textLower);
-      // Skip search for conversational questions that don't need web search
-      const isConversational = /(tu m['']?entends|tu es l[àa]|tu fonctionnes|tu marches|allo|tu fais quoi|tu sers [àa] quoi|qu['']?est[- ]ce que tu (es|fais|peux)|tu peux (faire|m['']?aider)|aide[- ]?moi|raconte|blague|histoire|chante)/i.test(textLower);
-      const isSimpleQuestion = text.trim().split(/\s+/).length <= 5 && /^(est[- ]ce que tu|tu |comment tu|pourquoi tu)/i.test(textLower);
-      // Force search for factual/time-sensitive questions (sports, events, dates, prices, news)
-      const needsFactualSearch = /(quand|quelle? heure|score|r[ée]sultat|classement|prochain match|joue|gagn[ée]|perdu|combien co[uû]te|prix de|cours de|bourse|bitcoin|crypto|m[ée]t[ée]o|temp[ée]rature|pr[ée]sident|ministre|[ée]lection|guerre|mort|n[ée]|actualit|derni[eè]re|nouveau|sortie? de|date de|qui a |où est |où se |c['']?est qui |c['']?est quoi )/i.test(textLower);
-      const skipSearch = (isSmallTalk || isIdentityQuestion || isConfirmation || isTooShort || isPersonal || isActionRequest || isConversational || isSimpleQuestion) && !needsFactualSearch;
+      const isConfirmation = /^(oui|non|ok|d'accord|vas[- ]?y|fais[- ]?le|confirme|annule|stop|arrête|c'est bon|c'est ça|exactement|tout à fait|je veux bien)/i.test(textLower);
+      const isSingleWord = text.trim().split(/\s+/).length <= 1;
+      const isPersonalAction = /^(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|met|mets)[\s-]/i.test(textLower);
+      const isConversational = /(tu m['']?entends|tu es l[àa]|tu fonctionnes|tu marches|allo|tu fais quoi|tu sers [àa] quoi|qu['']?est[- ]ce que tu (es|fais|peux)|tu peux (faire|m['']?aider)|aide[- ]?moi|raconte[- ]moi (une|un) (blague|histoire)|chante)/i.test(textLower);
+      // Only skip search for things that CLEARLY don't need web info
+      const skipSearch = isSmallTalk || isIdentityQuestion || isConfirmation || isSingleWord || isConversational;
 
       let preSearchContext = '';
       if (!skipSearch) {
