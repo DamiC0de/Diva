@@ -50,9 +50,22 @@ export default function RootLayout() {
   }, [fontsLoaded]);
 
   useEffect(() => {
-    // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    // Check initial session — verify it's still valid
+    supabase.auth.getSession().then(async ({ data: { session: localSession } }) => {
+      if (localSession) {
+        // Verify token is still valid by refreshing
+        const { data: { session: refreshed }, error } = await supabase.auth.refreshSession();
+        if (error || !refreshed) {
+          // Session expired — force logout
+          console.warn('[Auth] Session expired, signing out');
+          await supabase.auth.signOut();
+          setSession(null);
+        } else {
+          setSession(refreshed);
+        }
+      } else {
+        setSession(null);
+      }
       setLoading(false);
     });
 
