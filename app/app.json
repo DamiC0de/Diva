@@ -37,7 +37,8 @@
       "expo-router",
       "expo-font",
       "expo-secure-store",
-      "./modules/notification-reader/app.plugin"
+      "./modules/notification-reader/app.plugin",
+      "./modules/diva-ambient/app.plugin"
     ]
   }
 }
