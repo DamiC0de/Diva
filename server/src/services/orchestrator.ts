@@ -238,17 +238,8 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
       required: ['url'],
     },
   },
-  {
-    name: 'web_search',
-    description: "Rechercher une information sur le web. ATTENTION: N'utilise PAS ce tool pour glucose.press — utilise get_glucose à la place !",
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        query: { type: 'string', description: 'La requête de recherche' },
-      },
-      required: ['query'],
-    },
-  },
+  // web_search is now handled by Anthropic's native server-side tool (web_search_20250305)
+  // It's added separately in the API call, not as a custom tool here.
   {
     name: 'delete_memory',
     description: "Supprimer un souvenir/mémoire quand l'utilisateur dit 'oublie que...', 'efface ce que tu sais sur...'. Recherche la mémoire la plus pertinente et la supprime.",
@@ -1135,16 +1126,9 @@ export class Orchestrator {
       if (userHist) userHist.lastActivity = Date.now();
 
       // Pre-search: skip for small talk, confirmations, short queries, or personal questions
-      const isSmallTalk = /^(salut|bonjour|hey|coucou|ça va|comment vas|merci|au revoir|bonne nuit|ok|d'accord|oui|non|cool|super|parfait)/i.test(textLower);
-      const isIdentityQuestion = /(qui es[- ]tu|t['']?es qui|c['']?est quoi (ton nom|diva)|comment tu t['']?appelles|tu t['']?appelles comment|pr[ée]sente[- ]?toi|parle[- ]?moi de toi)/i.test(textLower);
-      const isConfirmation = /^(oui|non|ok|d'accord|vas[- ]?y|fais[- ]?le|ajoute|confirme|annule|stop|arrête|c'est bon|c'est ça|exactement|tout à fait|je veux bien|s'il te pla[iî]t|please)/i.test(textLower);
-      const isTooShort = text.trim().split(/\s+/).length <= 4;
-      const isPersonal = /mon\s+(agenda|calendrier|planning|rdv|rendez|mail|message|notif)/i.test(textLower);
-      const isActionRequest = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|met|mets)[\s-]/i.test(textLower);
-      // Skip search for conversational questions that don't need web search
-      const isConversational = /(tu m['']?entends|tu es l[àa]|tu fonctionnes|tu marches|allo|tu fais quoi|tu sers [àa] quoi|qu['']?est[- ]ce que tu (es|fais|peux)|tu peux (faire|m['']?aider)|aide[- ]?moi|raconte|blague|histoire|chante)/i.test(textLower);
-      const isSimpleQuestion = text.trim().split(/\s+/).length <= 8 && /^(est[- ]ce que|tu |comment |pourquoi tu|qu['']?est)/i.test(textLower);
-      const skipSearch = isSmallTalk || isIdentityQuestion || isConfirmation || isTooShort || isPersonal || isActionRequest || isConversational || isSimpleQuestion;
+      // No more pre-search logic — Claude decides when to use web_search via tools.
+      // This is faster (no unnecessary searches) and smarter (model knows its own knowledge cutoff).
+      const skipSearch = true; // Pre-search disabled — tools handle everything
 
       let preSearchContext = '';
       if (!skipSearch) {
@@ -1197,8 +1181,10 @@ export class Orchestrator {
       };
 
       // Check if this looks like a tool request (action words)
-      const mightNeedTools = /(ajoute|supprime|crée|envoie|lis|ouvre|rappelle|timer|minuteur|agenda|calendrier|email|mail|glucose|news|actu|infos|presse|articles|dossier|comparaison|synthèse|journée|aujourd'hui|hier|résume)/i.test(text);
-      this.logger.info({ msg: 'Tool check', text: text.substring(0, 50), mightNeedTools });
+      // Always give Claude access to tools — let the model decide when to search.
+      // Claude knows its knowledge cutoff and will use web_search when it doesn't have the answer.
+      const mightNeedTools = true;
+      this.logger.info({ msg: 'Processing with tools available', text: text.substring(0, 50) });
 
       // FORCE glucose tool when glucose.press is mentioned (bypass LLM choice)
       const isGlucoseQuery = /glucose/i.test(text);
@@ -1534,6 +1520,8 @@ export class Orchestrator {
             break;
           }
           case 'web_search': {
+            // This case should rarely be hit now — web search is handled natively by Anthropic.
+            // But keep as fallback in case the model calls it as a custom tool.
             const searchQuery = input.query as string;
             try {
               const searchResult = await executeWebSearch(searchQuery);
