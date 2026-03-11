@@ -4,12 +4,19 @@ import { useTheme } from '../../constants/theme';
 
 type TextVariant = 'hero' | 'heading' | 'subheading' | 'body' | 'caption' | 'label';
 
-// Font family mapping for Inter
+// Font family mapping
 const FONT_FAMILIES = {
   regular: 'Inter_400Regular',
   medium: 'Inter_500Medium',
   semibold: 'Inter_600SemiBold',
   bold: 'Inter_700Bold',
+};
+
+// Nunito for headings (as defined with Felix)
+const HEADING_FONTS = {
+  regular: 'Nunito_400Regular',
+  semibold: 'Nunito_600SemiBold',
+  bold: 'Nunito_700Bold',
 };
 
 interface TextProps {
@@ -28,7 +35,7 @@ export function Text({ children, variant = 'body', color, style, weight }: TextP
       case 'hero':
         return {
           fontSize: 34,
-          fontFamily: FONT_FAMILIES.bold,
+          fontFamily: HEADING_FONTS.bold,
           color: theme.text,
           lineHeight: 41,
           letterSpacing: 0.4,
@@ -36,7 +43,7 @@ export function Text({ children, variant = 'body', color, style, weight }: TextP
       case 'heading':
         return {
           fontSize: 22,
-          fontFamily: FONT_FAMILIES.semibold,
+          fontFamily: HEADING_FONTS.semibold,
           color: theme.text,
           lineHeight: 28,
           letterSpacing: 0.35,
@@ -44,7 +51,7 @@ export function Text({ children, variant = 'body', color, style, weight }: TextP
       case 'subheading':
         return {
           fontSize: 17,
-          fontFamily: FONT_FAMILIES.semibold,
+          fontFamily: HEADING_FONTS.semibold,
           color: theme.text,
           lineHeight: 22,
           letterSpacing: -0.43,
