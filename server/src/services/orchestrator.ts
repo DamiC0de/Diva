@@ -900,12 +900,12 @@ export class Orchestrator {
 
       case 'get_settings':
         // Settings via WebSocket (fallback when HTTP is blocked by ATS)
-        await this.handleGetSettings(socket, userId);
+        this.handleGetSettings(socket, userId).catch(e => this.logger.error({ msg: 'WS get_settings error', error: e }));
         break;
 
       case 'update_settings':
         // Save settings via WebSocket
-        await this.handleUpdateSettings(socket, userId, (message as any).settings);
+        this.handleUpdateSettings(socket, userId, (message as any).settings).catch(e => this.logger.error({ msg: 'WS update_settings error', error: e }));
         break;
   }
 
