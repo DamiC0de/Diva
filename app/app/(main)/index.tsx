@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Text, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Settings, History, Wifi, WifiOff, MessageCircle } from 'lucide-react-native';
 import { OrbView } from '../../components/Orb/OrbView';
@@ -30,6 +30,7 @@ export default function OrbScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { widget } = useLocalSearchParams<{ widget?: string }>();
   const [token, setToken] = useState<string | null>(null);
   const { isConnected: isNetworkConnected } = useNetworkStatus();
   const { settings, updateSetting } = useSettings();
@@ -77,6 +78,15 @@ export default function OrbScreen() {
   });
 
   const isDark = theme.statusBar === 'light';
+
+  // Auto-start listening when opened from widget
+  useEffect(() => {
+    if (widget === 'true' && orbState === 'idle' && token) {
+      const timer = setTimeout(() => toggleSession(), 600);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widget, token]); // run once on mount
 
   return (
     <View style={styles.container}>
