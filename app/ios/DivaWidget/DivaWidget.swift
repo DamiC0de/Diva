@@ -97,35 +97,20 @@ struct SmallWidgetView: View {
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
 
-                if #available(iOS 17.0, *) {
-                    Button(intent: StartListeningIntent()) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "mic.fill")
-                                .font(.system(size: 10))
-                            Text("Parler")
-                                .font(.system(size: 11, weight: .semibold))
-                        }
-                        .foregroundColor(bgDark)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(brandCyan)
-                        .clipShape(Capsule())
+                // Use Link (URL scheme) for reliable widget→app communication.
+                // AppIntent + openAppWhenRun doesn't pass URL params; Link does.
+                Link(destination: URL(string: "diva:///?widget=true")!) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 10))
+                        Text("Parler")
+                            .font(.system(size: 11, weight: .semibold))
                     }
-                    .buttonStyle(.plain)
-                } else {
-                    Link(destination: URL(string: "diva:///?widget=true")!) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "mic.fill")
-                                .font(.system(size: 10))
-                            Text("Parler")
-                                .font(.system(size: 11, weight: .semibold))
-                        }
-                        .foregroundColor(bgDark)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(brandCyan)
-                        .clipShape(Capsule())
-                    }
+                    .foregroundColor(bgDark)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(brandCyan)
+                    .clipShape(Capsule())
                 }
             }
             .padding(12)
@@ -152,35 +137,18 @@ struct MediumWidgetView: View {
                         .font(.system(size: 12, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
 
-                    if #available(iOS 17.0, *) {
-                        Button(intent: StartListeningIntent()) {
-                            HStack(spacing: 3) {
-                                Image(systemName: "mic.fill")
-                                    .font(.system(size: 9))
-                                Text("Parler")
-                                    .font(.system(size: 10, weight: .semibold))
-                            }
-                            .foregroundColor(bgDark)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(brandCyan)
-                            .clipShape(Capsule())
+                    Link(destination: URL(string: "diva:///?widget=true")!) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 9))
+                            Text("Parler")
+                                .font(.system(size: 10, weight: .semibold))
                         }
-                        .buttonStyle(.plain)
-                    } else {
-                        Link(destination: URL(string: "diva:///?widget=true")!) {
-                            HStack(spacing: 3) {
-                                Image(systemName: "mic.fill")
-                                    .font(.system(size: 9))
-                                Text("Parler")
-                                    .font(.system(size: 10, weight: .semibold))
-                            }
-                            .foregroundColor(bgDark)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(brandCyan)
-                            .clipShape(Capsule())
-                        }
+                        .foregroundColor(bgDark)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(brandCyan)
+                        .clipShape(Capsule())
                     }
                 }
                 .frame(width: 90)
