@@ -740,8 +740,9 @@ export class Orchestrator {
   private userHistory: Map<string, { messages: { role: 'user' | 'assistant'; content: string }[]; lastActivity: number }> = new Map(); // in-memory cache, persisted to Supabase
   private historyLoadedUsers = new Set<string>(); // Track which users have had history loaded
   private clientMemory = new Map<string, string>(); // userId → client-provided memory context
-  private fillerAudios: string[] = []; // Pre-loaded filler audio as base64
-  private lastFillerIndex = new Map<string, number>(); // userId → last filler index (avoid repeats)
+  // Contextual filler audios — categorized for appropriate responses
+  private fillerCategories: Map<string, string[]> = new Map(); // category → base64[]
+  private lastFillerIndex = new Map<string, string>(); // userId → last filler key (avoid repeats)
 
   constructor(
     logger: FastifyBaseLogger,
@@ -756,34 +757,94 @@ export class Orchestrator {
   }
 
   /**
-   * Load pre-generated filler phrases into memory for instant playback
+   * Load pre-generated contextual filler phrases into memory
    */
   private loadFillerAudios(): void {
     try {
-      const fillersDir = join(import.meta.dirname ?? __dirname, '../../assets/fillers');
-      const files = readdirSync(fillersDir).filter(f => f.endsWith('.mp3')).sort();
-      for (const file of files) {
-        const buffer = readFileSync(join(fillersDir, file));
-        this.fillerAudios.push(buffer.toString('base64'));
+      const baseDir = join(import.meta.dirname ?? __dirname, '../../assets/fillers');
+      const categories = ['emotional', 'factual', 'action', 'casual'];
+      let total = 0;
+      
+      for (const cat of categories) {
+        const catDir = join(baseDir, cat);
+        try {
+          const files = readdirSync(catDir).filter(f => f.endsWith('.mp3')).sort();
+          const audios: string[] = [];
+          for (const file of files) {
+            const buffer = readFileSync(join(catDir, file));
+            if (buffer.length > 0) {
+              audios.push(buffer.toString('base64'));
+            }
+          }
+          if (audios.length > 0) {
+            this.fillerCategories.set(cat, audios);
+            total += audios.length;
+          }
+        } catch { /* category dir missing — skip */ }
       }
-      this.logger.info({ msg: 'Loaded filler audios', count: this.fillerAudios.length });
+      
+      // Fallback: load flat fillers as 'casual' if no categories found
+      if (total === 0) {
+        const files = readdirSync(baseDir).filter(f => f.endsWith('.mp3')).sort();
+        const audios: string[] = [];
+        for (const file of files) {
+          const buffer = readFileSync(join(baseDir, file));
+          if (buffer.length > 0) audios.push(buffer.toString('base64'));
+        }
+        if (audios.length > 0) this.fillerCategories.set('casual', audios);
+        total = audios.length;
+      }
+      
+      this.logger.info({ msg: 'Loaded filler audios', total, categories: [...this.fillerCategories.keys()] });
     } catch (e) {
       this.logger.warn({ msg: 'Could not load filler audios', error: String(e) });
     }
   }
 
   /**
-   * Pick a random filler audio (avoiding last used for this user)
+   * Classify user message tone (instant — regex only, no LLM)
    */
-  private pickFiller(userId: string): string | null {
-    if (this.fillerAudios.length === 0) return null;
-    const last = this.lastFillerIndex.get(userId) ?? -1;
+  private classifyTone(text: string): 'emotional' | 'factual' | 'action' | 'casual' {
+    const lower = text.toLowerCase();
+    
+    // Emotional: distress, sadness, crisis, personal struggles
+    if (/\b(suicid|mourir|mort|déprim|dépression|pleurer|pleure|triste|seul|solitude|anxié|panique|peur|mal\s+(de\s+vivre|à\s+vivre)|désespoir|ça\s+va\s+pas|j'en\s+peux\s+plus|aide[rz]?\s*moi|besoin\s+d'aide|difficile|douleur|souffr|inqui[eè]t|perdu|crise|stress[ée]?)\b/i.test(lower)) {
+      return 'emotional';
+    }
+    
+    // Factual: questions, search, info requests
+    if (/\b(c'est quoi|qu'est[- ]ce que|comment|pourquoi|combien|quand|qui est|explique|raconte|résume|cherche|trouve|article|info|nouvelle|actu|news|glucose|wikipedia)\b/i.test(lower) ||
+        lower.includes('?')) {
+      return 'factual';
+    }
+    
+    // Action: commands, tasks
+    if (/\b(mets|mettez|lance|ouvre|envoie|rappelle|crée|fais|active|désactive|change|configure|ajoute|supprime|éteins|allume)\b/i.test(lower)) {
+      return 'action';
+    }
+    
+    return 'casual';
+  }
+
+  /**
+   * Pick a contextual filler audio based on message tone
+   */
+  private pickFiller(userId: string, text: string): string | null {
+    const tone = this.classifyTone(text);
+    const audios = this.fillerCategories.get(tone) || this.fillerCategories.get('casual');
+    if (!audios || audios.length === 0) return null;
+    
+    const lastKey = this.lastFillerIndex.get(userId) ?? '';
     let idx: number;
+    let key: string;
     do {
-      idx = Math.floor(Math.random() * this.fillerAudios.length);
-    } while (idx === last && this.fillerAudios.length > 1);
-    this.lastFillerIndex.set(userId, idx);
-    return this.fillerAudios[idx];
+      idx = Math.floor(Math.random() * audios.length);
+      key = `${tone}-${idx}`;
+    } while (key === lastKey && audios.length > 1);
+    
+    this.lastFillerIndex.set(userId, key);
+    this.logger.debug({ msg: 'Filler selected', tone, idx });
+    return audios[idx];
   }
 
   /**
@@ -1115,7 +1176,7 @@ export class Orchestrator {
 
     try {
       // 0. Send instant filler audio while we process
-      const fillerAudio = this.pickFiller(request.userId);
+      const fillerAudio = this.pickFiller(request.userId, text);
       if (fillerAudio) {
         this.sendEvent(socket, { type: 'tts_audio', audio: fillerAudio, requestId: request.id });
         this.setState(socket, request, RequestState.STREAMING_AUDIO);
