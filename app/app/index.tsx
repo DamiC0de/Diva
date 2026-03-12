@@ -1,6 +1,7 @@
-import { Redirect } from 'expo-router';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 
 export default function Index() {
-  // TODO: Check auth state, redirect accordingly
-  return <Redirect href="/(main)" />;
+  // Preserve widget=true query param through the redirect
+  const { widget } = useLocalSearchParams<{ widget?: string }>();
+  return <Redirect href={widget === 'true' ? '/(main)?widget=true' : '/(main)'} />;
 }
