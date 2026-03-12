@@ -8,6 +8,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import type { FastifyBaseLogger } from 'fastify';
 import type { WebSocket } from 'ws';
 import { LLMService } from './llm.js';
@@ -738,6 +740,8 @@ export class Orchestrator {
   private userHistory: Map<string, { messages: { role: 'user' | 'assistant'; content: string }[]; lastActivity: number }> = new Map(); // in-memory cache, persisted to Supabase
   private historyLoadedUsers = new Set<string>(); // Track which users have had history loaded
   private clientMemory = new Map<string, string>(); // userId → client-provided memory context
+  private fillerAudios: string[] = []; // Pre-loaded filler audio as base64
+  private lastFillerIndex = new Map<string, number>(); // userId → last filler index (avoid repeats)
 
   constructor(
     logger: FastifyBaseLogger,
@@ -748,6 +752,38 @@ export class Orchestrator {
     this.llm = new LLMService(logger);
     this.redis = redis;
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.loadFillerAudios();
+  }
+
+  /**
+   * Load pre-generated filler phrases into memory for instant playback
+   */
+  private loadFillerAudios(): void {
+    try {
+      const fillersDir = join(import.meta.dirname ?? __dirname, '../../assets/fillers');
+      const files = readdirSync(fillersDir).filter(f => f.endsWith('.mp3')).sort();
+      for (const file of files) {
+        const buffer = readFileSync(join(fillersDir, file));
+        this.fillerAudios.push(buffer.toString('base64'));
+      }
+      this.logger.info({ msg: 'Loaded filler audios', count: this.fillerAudios.length });
+    } catch (e) {
+      this.logger.warn({ msg: 'Could not load filler audios', error: String(e) });
+    }
+  }
+
+  /**
+   * Pick a random filler audio (avoiding last used for this user)
+   */
+  private pickFiller(userId: string): string | null {
+    if (this.fillerAudios.length === 0) return null;
+    const last = this.lastFillerIndex.get(userId) ?? -1;
+    let idx: number;
+    do {
+      idx = Math.floor(Math.random() * this.fillerAudios.length);
+    } while (idx === last && this.fillerAudios.length > 1);
+    this.lastFillerIndex.set(userId, idx);
+    return this.fillerAudios[idx];
   }
 
   /**
@@ -1078,6 +1114,13 @@ export class Orchestrator {
     const metrics = { prep: 0, search: 0, llm: 0, tools: 0, tts: 0, total: 0 };
 
     try {
+      // 0. Send instant filler audio while we process
+      const fillerAudio = this.pickFiller(request.userId);
+      if (fillerAudio) {
+        this.sendEvent(socket, { type: 'tts_audio', audio: fillerAudio, requestId: request.id });
+        this.setState(socket, request, RequestState.STREAMING_AUDIO);
+      }
+
       // 1. LLM
       this.setState(socket, request, RequestState.THINKING);
 
