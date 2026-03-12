@@ -46,7 +46,7 @@ class DivaWidgetBridge: NSObject {
             return
         }
         let timestamp = defaults.double(forKey: "widgetListenTrigger")
-        let wasTriggered = timestamp > 0 && (Date().timeIntervalSince1970 - timestamp) < 5.0
+        let wasTriggered = timestamp > 0 && (Date().timeIntervalSince1970 - timestamp) < 15.0
         // Clear so it doesn't fire again
         defaults.removeObject(forKey: "widgetListenTrigger")
         defaults.synchronize()

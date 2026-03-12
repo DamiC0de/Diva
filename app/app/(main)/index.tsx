@@ -85,42 +85,61 @@ export default function OrbScreen() {
 
   const isDark = theme.statusBar === 'light';
 
-  // Auto-start listening when opened from widget via URL param (fallback)
+  /**
+   * Widget launch trigger — decoupled from token loading.
+   *
+   * Bug fix: Previously gated on `token !== null`, but cold launches
+   * (opening from widget) load the token asynchronously. The trigger
+   * was checked before the token was ready and silently dropped.
+   *
+   * Fix: store a `pendingWidgetLaunch` flag as soon as we detect the
+   * trigger (URL param OR UserDefaults). Start the session as soon
+   * as BOTH the flag AND the token are available.
+   */
+  const [pendingWidgetLaunch, setPendingWidgetLaunch] = useState(false);
+  const appStateRef = useRef(AppState.currentState);
+
+  // Detect widget launch via URL param (deep link / iOS 16 fallback)
   useEffect(() => {
-    if (widget === 'true' && orbState === 'idle' && token) {
-      const timer = setTimeout(() => toggleSession(), 600);
-      return () => clearTimeout(timer);
+    if (widget === 'true') {
+      setPendingWidgetLaunch(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [widget, token]); // run once on mount
+  }, []); // once on mount only
 
-  // Auto-start listening via AppIntent UserDefaults trigger (iOS 17 widget button)
-  const appStateRef = useRef(AppState.currentState);
-  useEffect(() => {
-    const checkWidgetTrigger = () => {
-      const bridge = NativeModules.DivaWidgetBridge;
-      if (bridge?.checkAndClearWidgetTrigger) {
-        bridge.checkAndClearWidgetTrigger((triggered: boolean) => {
-          if (triggered && orbState === 'idle' && token) {
-            setTimeout(() => toggleSession(), 400);
-          }
-        });
+  // Detect widget launch via UserDefaults trigger (iOS 17 AppIntent)
+  const checkWidgetTrigger = useCallback(() => {
+    const bridge = NativeModules.DivaWidgetBridge;
+    if (!bridge?.checkAndClearWidgetTrigger) return;
+    bridge.checkAndClearWidgetTrigger((triggered: boolean) => {
+      if (triggered) {
+        console.log('[Widget] Trigger detected from AppIntent');
+        setPendingWidgetLaunch(true);
       }
-    };
+    });
+  }, []);
 
-    // Check on mount (cold start from widget)
-    if (token) checkWidgetTrigger();
-
-    // Check whenever app comes to foreground
+  // Check on mount (cold start) and on every foreground event
+  useEffect(() => {
+    checkWidgetTrigger();
     const sub = AppState.addEventListener('change', (nextState) => {
       if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
-        if (token) checkWidgetTrigger();
+        checkWidgetTrigger();
       }
       appStateRef.current = nextState;
     });
     return () => sub.remove();
+  }, [checkWidgetTrigger]);
+
+  // Start session once token is ready + pending launch flag is set
+  useEffect(() => {
+    if (pendingWidgetLaunch && token && orbState === 'idle') {
+      console.log('[Widget] Token ready + pending launch → starting session');
+      setPendingWidgetLaunch(false);
+      setTimeout(() => toggleSession(), 400);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, orbState]);
+  }, [pendingWidgetLaunch, token, orbState]);
 
   return (
     <View style={styles.container}>
