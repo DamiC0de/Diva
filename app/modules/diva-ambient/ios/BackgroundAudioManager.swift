@@ -173,8 +173,8 @@ class BackgroundAudioManager {
         vadSilenceTimer?.invalidate()
         vadSilenceTimer = Timer.scheduledTimer(withTimeInterval: vadSilenceTimeout, repeats: false) { [weak self] _ in
             guard let self = self, self.isVoiceDetected else { return }
+            // Reset visual state only — do NOT stop speech recognition in always-on mode
             self.isVoiceDetected = false
-            self.stopSpeechRecognition()
             self.delegate?.audioManagerDidDetectSilence()
         }
     }
@@ -235,30 +235,44 @@ class BackgroundAudioManager {
             }
             
             if let error = error {
-                // Don't log "cancelled" errors — they're expected
                 let nsError = error as NSError
-                if nsError.code != 216 { // 216 = recognition cancelled
-                    print("[DivaAmbient] Speech recognition error: \(error.localizedDescription)")
+                let isCancelled = nsError.code == 216 || nsError.code == 301
+                if !isCancelled {
+                    print("[DivaAmbient] Speech recognition error (\(nsError.code)): \(error.localizedDescription)")
                 }
                 self.stopSpeechRecognition()
+                // Auto-restart on unexpected errors (not cancellations from our own stop())
+                if !isCancelled && self.isRunning {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                        guard let self = self, self.isRunning else { return }
+                        print("[DivaAmbient] Restarting after error")
+                        self.startSpeechRecognition()
+                    }
+                }
+                return
             }
             
             if result?.isFinal == true {
                 self.stopSpeechRecognition()
+                // Final result = recognizer closed — restart immediately
+                if self.isRunning {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                        guard let self = self, self.isRunning else { return }
+                        self.startSpeechRecognition()
+                    }
+                }
             }
         }
         
-        // Auto-restart before Apple's 60s limit
+        // Auto-restart before Apple's 60s limit — always, regardless of voice activity
         speechRestartTimer?.invalidate()
         speechRestartTimer = Timer.scheduledTimer(withTimeInterval: maxSpeechDuration, repeats: false) { [weak self] _ in
-            guard let self = self, self.isVoiceDetected else { return }
-            print("[DivaAmbient] Speech recognition timeout — restarting")
+            guard let self = self, self.isRunning else { return }
+            print("[DivaAmbient] Speech recognition 55s timeout — restarting")
             self.stopSpeechRecognition()
-            // Restart after a brief pause
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                if self?.isVoiceDetected == true {
-                    self?.startSpeechRecognition()
-                }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self = self, self.isRunning else { return }
+                self.startSpeechRecognition()
             }
         }
         
