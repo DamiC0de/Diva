@@ -38,7 +38,8 @@ class BackgroundAudioManager {
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "fr-FR"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
-    private let wakeKeyword = "diva"
+    // Wake word variants — SFSpeechRecognizer (fr-FR) may transcribe "Diva" differently
+    private let wakeKeywords = ["diva", "divas", "di va", "divah", "j'avais"]
     private let cooldownDuration: TimeInterval = 2.0
     private var lastWakeWordTime: Date = .distantPast
     private var speechRestartTimer: Timer?
@@ -200,6 +201,7 @@ class BackgroundAudioManager {
         }
         
         speechStartTime = Date()
+        print("[DivaAmbient] 🎙️ Recognizer started — locale=\(recognizer.locale.identifier) onDevice=\(request.requiresOnDeviceRecognition) keywords=\(self.wakeKeywords)")
         
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self = self else { return }
@@ -207,23 +209,29 @@ class BackgroundAudioManager {
             if let result = result {
                 let transcript = result.bestTranscription.formattedString.lowercased()
                 
-                // Check for wake word
-                if transcript.contains(self.wakeKeyword) {
+                // Debug: log every non-empty partial transcript
+                if !transcript.isEmpty {
+                    print("[DivaAmbient] 👂 Heard: \"\(transcript)\"")
+                }
+                
+                // Check for wake word variants
+                let matchedKeyword = self.wakeKeywords.first { transcript.contains($0) }
+                if let matched = matchedKeyword {
                     let timeSinceLastWake = Date().timeIntervalSince(self.lastWakeWordTime)
                     if timeSinceLastWake >= self.cooldownDuration {
                         self.lastWakeWordTime = Date()
                         
                         // Get confidence from segments
                         let confidence = result.bestTranscription.segments
-                            .filter { $0.substring.lowercased().contains(self.wakeKeyword) }
+                            .filter { $0.substring.lowercased().contains(matched) }
                             .first?.confidence ?? 0.8
                         
-                        print("[DivaAmbient] Wake word detected! Transcript: \"\(transcript)\", confidence: \(confidence)")
+                        print("[DivaAmbient] 🎯 Wake word detected! matched='\(matched)' transcript=\"\(transcript)\" confidence=\(confidence)")
                         
                                         self.stopSpeechRecognition()
                         self.delegate?.audioManagerDidDetectWakeWord(
                             transcript: transcript,
-                            confidence: confidence
+                            confidence: Float(confidence)
                         )
                         // Restart speech recognition after a brief pause (ready for next trigger)
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
