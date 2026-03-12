@@ -1285,8 +1285,8 @@ export class Orchestrator {
         }
       }
 
-      if (mightNeedTools) {
-        // Use regular chat with tools
+      // First LLM call — with tools (non-streaming, since we need to detect tool_use)
+      {
         let llmResult = await this.llm.chat({
           userId: request.userId,
           message: preSearchContext ? `${text}${preSearchContext}` : text,
@@ -1300,6 +1300,7 @@ export class Orchestrator {
         if (request.cancelled) return;
 
         // Handle tool use
+        let toolContext = '';
         if (llmResult.toolUse && llmResult.toolUse.length > 0) {
           const tTools = Date.now();
           const toolResults = await this.executeTools(llmResult.toolUse, request.userId, socket);
@@ -1307,77 +1308,76 @@ export class Orchestrator {
             const openUrl = (tool as unknown as Record<string, unknown>)._openUrl as string | undefined;
             if (openUrl) this.sendEvent(socket, { type: 'open_url', url: openUrl, requestId: request.id } as ServerEvent);
           }
-
-          const toolContext = toolResults.map(r => `[${r.name}]: ${r.result}`).join('\n');
-          llmResult = await this.llm.chat({
-            userId: request.userId,
-            message: toolContext,
-            history: [
-              ...sessionHistory.slice(0, -1),
-              { role: 'user' as const, content: text },
-              { role: 'assistant' as const, content: llmResult.text || '[tool]' },
-            ],
-            memories,
-            userSettings,
-          });
+          toolContext = toolResults.map(r => `[${r.name}]: ${r.result}`).join('\n');
           metrics.tools = Date.now() - tTools;
           if (request.cancelled) return;
         }
 
-        fullText = this.cleanForTTS(llmResult.text);
-      } else {
-        // Use streaming LLM → TTS for faster response
-        let sentenceBuffer = '';
-        
-        const llmStream = this.llm.chatStream({
-          userId: request.userId,
-          message: preSearchContext ? `${text}${preSearchContext}` : text,
-          history: sessionHistory.slice(0, -1),
-          memories,
-          userSettings,
-        });
+        // If tools were used OR no text yet → stream the final response
+        // If no tools and we already have text → use it directly
+        if (toolContext || !llmResult.text) {
+          // Stream the response (with or without tool context) for fast TTS
+          let sentenceBuffer = '';
+          const streamHistory = toolContext
+            ? [
+                ...sessionHistory.slice(0, -1),
+                { role: 'user' as const, content: text },
+                { role: 'assistant' as const, content: llmResult.text || '[tool]' },
+              ]
+            : sessionHistory.slice(0, -1);
+          const streamMessage = toolContext || (preSearchContext ? `${text}${preSearchContext}` : text);
 
-        for await (const token of llmStream) {
-          if (request.cancelled) break;
-          
-          sentenceBuffer += token;
-          fullText += token;
-          
-          // Check for sentence boundary
-          const sentenceMatch = sentenceBuffer.match(/^(.*?[.!?])\s*(.*)$/s);
-          if (sentenceMatch) {
-            const completeSentence = sentenceMatch[1].trim();
-            sentenceBuffer = sentenceMatch[2];
-            
-            if (completeSentence) {
-              const cleanSentence = this.cleanForTTS(completeSentence);
-              if (cleanSentence) {
-                streamSentence(cleanSentence, sentenceIndex++);
+          const llmStream = this.llm.chatStream({
+            userId: request.userId,
+            message: streamMessage,
+            history: streamHistory,
+            memories,
+            userSettings,
+          });
+
+          for await (const token of llmStream) {
+            if (request.cancelled) break;
+            sentenceBuffer += token;
+            fullText += token;
+
+            // Send text_response progressively for UI
+            this.sendEvent(socket, { type: 'text_response', text: fullText, requestId: request.id, isPartial: true } as any);
+
+            // Check for sentence boundary → start TTS immediately
+            const sentenceMatch = sentenceBuffer.match(/^(.*?[.!?])\s*(.*)$/s);
+            if (sentenceMatch) {
+              const completeSentence = sentenceMatch[1].trim();
+              sentenceBuffer = sentenceMatch[2];
+              if (completeSentence) {
+                const cleanSentence = this.cleanForTTS(completeSentence);
+                if (cleanSentence) {
+                  streamSentence(cleanSentence, sentenceIndex++);
+                }
               }
             }
           }
-        }
-        
-        // Handle any remaining text
-        if (sentenceBuffer.trim()) {
-          const cleanSentence = this.cleanForTTS(sentenceBuffer.trim());
-          if (cleanSentence) {
-            streamSentence(cleanSentence, sentenceIndex++);
+
+          // Flush remaining buffer
+          if (sentenceBuffer.trim()) {
+            const cleanSentence = this.cleanForTTS(sentenceBuffer.trim());
+            if (cleanSentence) {
+              streamSentence(cleanSentence, sentenceIndex++);
+            }
+          }
+        } else {
+          // Simple response (no tools, text already available) — still stream TTS
+          fullText = this.cleanForTTS(llmResult.text);
+          // Split into sentences for parallel TTS
+          const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
+          for (const sentence of sentences) {
+            const clean = sentence.trim();
+            if (clean) streamSentence(clean, sentenceIndex++);
           }
         }
-        
-        metrics.llm = Date.now() - tLlm;
-        fullText = this.cleanForTTS(fullText);
       }
 
-      // If we didn't stream TTS yet (tool path), do it now
+      // Wait for TTS to complete
       const tTts = Date.now();
-      if (sentenceIndex === 0 && fullText.trim()) {
-        const sentences = fullText.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 0);
-        for (const sentence of sentences) {
-          streamSentence(sentence, sentenceIndex++);
-        }
-      }
       
       // Wait for all TTS to complete
       if (ttsPromises.length > 0) {
