@@ -1175,15 +1175,16 @@ export class Orchestrator {
     const metrics = { prep: 0, search: 0, llm: 0, tools: 0, tts: 0, total: 0 };
 
     try {
-      // 0. Send instant filler audio while we process
+      // 1. LLM — set THINKING state FIRST (so client sets responseComplete=false)
+      this.setState(socket, request, RequestState.THINKING);
+
+      // 0. Send instant filler audio while we process (after THINKING state)
+      // Don't change state to STREAMING_AUDIO — orb stays in 'processing' mode
+      // so when filler finishes, client won't transition to idle
       const fillerAudio = this.pickFiller(request.userId, text);
       if (fillerAudio) {
         this.sendEvent(socket, { type: 'tts_audio', audio: fillerAudio, requestId: request.id });
-        this.setState(socket, request, RequestState.STREAMING_AUDIO);
       }
-
-      // 1. LLM
-      this.setState(socket, request, RequestState.THINKING);
 
       // Get/create session history for this WS connection
       if (!this.sessionHistory.has(socket)) {
