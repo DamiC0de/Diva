@@ -27,9 +27,9 @@ class BackgroundAudioManager {
     private var isAudioEngineRunning = false
     
     // VAD (Level 1)
-    private let vadThresholdDB: Float = -40.0    // dB threshold for voice detection
-    private let vadMinDuration: TimeInterval = 0.2 // Minimum voice duration (seconds)
-    private let vadSilenceTimeout: TimeInterval = 5.0 // Silence before stopping speech recognition
+    private let vadThresholdDB: Float = -45.0    // dB threshold for voice detection (lowered for sensitivity)
+    private let vadMinDuration: TimeInterval = 0.15 // Minimum voice duration (seconds)
+    private let vadSilenceTimeout: TimeInterval = 3.0 // Silence before stopping speech recognition
     private var vadVoiceStartTime: Date?
     private var vadSilenceTimer: Timer?
     private var isVoiceDetected = false
@@ -97,7 +97,13 @@ class BackgroundAudioManager {
         try audioEngine.start()
         isAudioEngineRunning = true
         
-        print("[DivaAmbient] Audio engine started — background listening active")
+        // Start speech recognition immediately — don't wait for VAD
+        // This ensures "Diva" is captured even when said quickly/softly
+        DispatchQueue.main.async { [weak self] in
+            self?.startSpeechRecognition()
+        }
+        
+        print("[DivaAmbient] Audio engine started — wake word listening active (always-on mode)")
     }
     
     func stop() {
@@ -137,35 +143,29 @@ class BackgroundAudioManager {
         // Convert to dB
         let db = 20 * log10f(max(rms, 1e-10))
         
+        // Always feed buffer to speech recognition (always-on wake word detection)
+        if recognitionRequest != nil {
+            recognitionRequest?.append(buffer)
+        }
+        
         if db > vadThresholdDB {
-            // Voice detected
+            // Voice detected (VAD used for visual feedback only now)
             if !isVoiceDetected {
                 if vadVoiceStartTime == nil {
                     vadVoiceStartTime = Date()
                 } else if Date().timeIntervalSince(vadVoiceStartTime!) >= vadMinDuration {
-                    // Voice confirmed (held for minimum duration)
                     isVoiceDetected = true
                     vadVoiceStartTime = nil
-                    
                     DispatchQueue.main.async { [weak self] in
                         self?.delegate?.audioManagerDidDetectVoice()
-                        self?.startSpeechRecognition()
                     }
                 }
             }
-            
-            // Reset silence timer
             DispatchQueue.main.async { [weak self] in
                 self?.resetSilenceTimer()
             }
         } else {
-            // Silence — reset voice start time
             vadVoiceStartTime = nil
-        }
-        
-        // Feed buffer to speech recognition if active
-        if recognitionRequest != nil {
-            recognitionRequest?.append(buffer)
         }
     }
     
@@ -220,11 +220,16 @@ class BackgroundAudioManager {
                         
                         print("[DivaAmbient] Wake word detected! Transcript: \"\(transcript)\", confidence: \(confidence)")
                         
-                        self.stopSpeechRecognition()
+                                        self.stopSpeechRecognition()
                         self.delegate?.audioManagerDidDetectWakeWord(
                             transcript: transcript,
                             confidence: confidence
                         )
+                        // Restart speech recognition after a brief pause (ready for next trigger)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                            guard let self = self, self.isRunning else { return }
+                            self.startSpeechRecognition()
+                        }
                     }
                 }
             }

@@ -11,6 +11,7 @@ import { Settings, History, Wifi, WifiOff, MessageCircle } from 'lucide-react-na
 import { OrbView } from '../../components/Orb/OrbView';
 import { TranscriptOverlay } from '../../components/TranscriptOverlay';
 import { ErrorOverlay } from '../../components/ErrorOverlay';
+import { WakeWordIndicator } from '../../components/WakeWordIndicator';
 import { useVoiceSession } from '../../hooks/useVoiceSession';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import { useSettings } from '../../hooks/useSettings';
@@ -64,10 +65,15 @@ export default function OrbScreen() {
   });
 
   // Diva Ambient Mode — native background wake word detection
+  const [wakeWordJustDetected, setWakeWordJustDetected] = useState(false);
+
   const handleWakeWord = useCallback(() => {
     if (orbState === 'idle') {
       console.log('[DivaAmbient] Wake word detected! Starting voice session...');
-      toggleSession();
+      // Brief flash animation before starting session
+      setWakeWordJustDetected(true);
+      setTimeout(() => setWakeWordJustDetected(false), 600);
+      setTimeout(() => toggleSession(), 300);
     }
   }, [orbState, toggleSession]);
 
@@ -195,9 +201,16 @@ export default function OrbScreen() {
           />
         </View>
 
-        {/* State hint */}
+        {/* Wake word / state indicator */}
         <View style={styles.hintContainer}>
-          {STATE_HINTS[orbState] ? (
+          {orbState === 'idle' ? (
+            <WakeWordIndicator
+              isListening={isAmbientListening}
+              isDetected={wakeWordJustDetected}
+              mode={settings.voice.wake_word_mode ?? 'smart'}
+              onPress={() => router.push('/(main)/settings')}
+            />
+          ) : STATE_HINTS[orbState] ? (
             <Text style={[styles.hintText, { color: theme.textMuted }]}>
               {STATE_HINTS[orbState]}
             </Text>

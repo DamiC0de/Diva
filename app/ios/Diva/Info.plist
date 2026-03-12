@@ -33,7 +33,7 @@
       </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>16</string>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSRequiresIPhoneOS</key>
@@ -41,7 +41,7 @@
     <key>NSAppTransportSecurity</key>
     <dict>
       <key>NSAllowsArbitraryLoads</key>
-      <false/>
+      <true/>
       <key>NSAllowsLocalNetworking</key>
       <true/>
     </dict>
@@ -49,16 +49,16 @@
     <string>Allow $(PRODUCT_NAME) to access your calendars</string>
     <key>NSCalendarsUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your calendars</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Diva peut utiliser la caméra pour prendre une photo de profil.</string>
     <key>NSContactsUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your contacts</string>
     <key>NSFaceIDUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
-    <key>NSCameraUsageDescription</key>
-    <string>Diva peut utiliser la caméra pour prendre une photo de profil.</string>
-    <key>NSPhotoLibraryUsageDescription</key>
-    <string>Diva peut accéder à tes photos pour personnaliser ton profil.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Diva a besoin du micro pour écouter ta voix et détecter le mot-clé "Diva".</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Diva peut accéder à tes photos pour personnaliser ton profil.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your reminders</string>
     <key>NSRemindersUsageDescription</key>
