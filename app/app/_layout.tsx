@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, ActivityIndicator, Linking } from 'react-native';
 import { Slot, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -27,10 +27,22 @@ SplashScreen.preventAutoHideAsync();
 // Required for OAuth redirects to work in Expo Go
 WebBrowser.maybeCompleteAuthSession();
 
+/** Returns true if a URL contains the widget=true trigger */
+function isWidgetLaunch(url: string | null): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.searchParams.get('widget') === 'true';
+  } catch {
+    return url.includes('widget=true');
+  }
+}
+
 export default function RootLayout() {
   const theme = useTheme();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const pendingWidgetRef = useRef(false);
 
   // Load Inter font family
   const [fontsLoaded] = useFonts({
@@ -80,9 +92,26 @@ export default function RootLayout() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Detect widget=true from initial URL (cold start) and subsequent Linking events
+  useEffect(() => {
+    Linking.getInitialURL().then((url) => {
+      if (isWidgetLaunch(url)) pendingWidgetRef.current = true;
+    });
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      if (isWidgetLaunch(url)) {
+        pendingWidgetRef.current = true;
+        // App already running — navigate immediately with param
+        router.push('/(main)?widget=true');
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   useEffect(() => {
     if (!loading && fontsLoaded) {
       if (session) {
+        const widget = pendingWidgetRef.current;
+        pendingWidgetRef.current = false;
         const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://72.60.155.227:4000';
         fetch(`${API_URL}/api/v1/settings`, {
           headers: { 'Authorization': `Bearer ${session.access_token}` },
@@ -90,12 +119,12 @@ export default function RootLayout() {
           .then(r => r.json())
           .then(data => {
             if (data.settings?.onboarding_completed) {
-              router.replace('/(main)');
+              router.replace(widget ? '/(main)?widget=true' : '/(main)');
             } else {
               router.replace('/(onboarding)');
             }
           })
-          .catch(() => router.replace('/(main)'));
+          .catch(() => router.replace(widget ? '/(main)?widget=true' : '/(main)'));
       } else {
         router.replace('/(auth)/login');
       }
