@@ -72,8 +72,8 @@ struct MascotView: View {
                 )
                 .frame(width: size * 1.1, height: size * 1.1)
 
-            // Mascot image
-            Image("DivaLogo")
+            // Mascot image (embedded base64 — no xcassets needed in widget target)
+            Image.divaMascot
                 .resizable()
                 .scaledToFit()
                 .frame(width: size, height: size)
