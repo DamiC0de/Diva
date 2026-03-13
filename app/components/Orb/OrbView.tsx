@@ -64,7 +64,6 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
   
   const animRef = useRef<Animated.CompositeAnimation | null>(null);
   const mouthAnimRef = useRef<Animated.CompositeAnimation | null>(null);
-  const prevStateRef = useRef<OrbState>(state);
 
   // Debug: log state changes
   useEffect(() => {
@@ -86,7 +85,7 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
   const resetAnimations = () => {
     animRef.current?.stop();
     mouthAnimRef.current?.stop();
-    [scale, scaleX, scaleY, translateY, rotate, tilt, sway, glowOpacity, glowScale, 
+    [scale, scaleX, scaleY, translateY, rotate, tilt, sway, wiggle, glowOpacity, glowScale, 
      ring1Scale, ring1Opacity, ring2Scale, ring2Opacity, ring3Scale, ring3Opacity, shakeX,
      mouthOpen, mouthOpacity]
       .forEach(anim => anim.stopAnimation());
@@ -100,6 +99,7 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
     rotate.setValue(0);
     tilt.setValue(0);
     sway.setValue(0);
+    wiggle.setValue(0);
     glowScale.setValue(1);
     glowOpacity.setValue(0.4);
     ring1Opacity.setValue(0);
@@ -204,48 +204,6 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
   }, []);
 
   useEffect(() => {
-    const prevState = prevStateRef.current;
-    prevStateRef.current = state;
-    
-    // ── Smooth transition: speaking → idle (settling down) ──
-    if (prevState === 'speaking' && state === 'idle') {
-      console.log('[OrbView] Settling from speaking → idle');
-      // Stop speaking anims but don't hard-reset — animate to neutral
-      animRef.current?.stop();
-      mouthAnimRef.current?.stop();
-      
-      // Gentle mouth close
-      Animated.timing(mouthOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start();
-      Animated.timing(mouthOpen, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-      
-      // Settling bounce: one last bounce then ease into idle float
-      const settle = Animated.sequence([
-        // Last little bounce up
-        Animated.parallel([
-          Animated.timing(scaleX, { toValue: 0.97, duration: 200, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-          Animated.timing(scaleY, { toValue: 1.04, duration: 200, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-          Animated.timing(translateY, { toValue: -5, duration: 200, useNativeDriver: true }),
-        ]),
-        // Settle to center
-        Animated.parallel([
-          Animated.spring(scaleX, { toValue: 1, damping: 12, stiffness: 200, useNativeDriver: true }),
-          Animated.spring(scaleY, { toValue: 1, damping: 12, stiffness: 200, useNativeDriver: true }),
-          Animated.spring(translateY, { toValue: 0, damping: 12, stiffness: 200, useNativeDriver: true }),
-          Animated.spring(sway, { toValue: 0, damping: 15, stiffness: 200, useNativeDriver: true }),
-          Animated.timing(glowOpacity, { toValue: 0.4, duration: 500, useNativeDriver: true }),
-          Animated.timing(glowScale, { toValue: 1, duration: 500, useNativeDriver: true }),
-        ]),
-      ]);
-      
-      settle.start(({ finished }) => {
-        if (finished) {
-          // Now start normal idle animation
-          startIdleAnimation();
-        }
-      });
-      return () => { settle.stop(); };
-    }
-
     resetAnimations();
 
     switch (state) {
