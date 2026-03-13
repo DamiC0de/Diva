@@ -64,6 +64,7 @@ export async function getLatestArticles(limit = 10): Promise<GlucoseArticle[]> {
       sources!inner(name)
     `)
     .is('archived_at', null)
+    .in('language', ['fr', 'en'])
     .order('published_at', { ascending: false })
     .limit(limit);
   
@@ -104,6 +105,7 @@ export async function searchArticles(query: string, limit = 10): Promise<Glucose
       sources!inner(name)
     `)
     .is('archived_at', null)
+    .in('language', ['fr', 'en'])
     .or(`title.ilike.%${query}%,title_fr.ilike.%${query}%,content.ilike.%${query}%`)
     .order('published_at', { ascending: false })
     .limit(limit);
