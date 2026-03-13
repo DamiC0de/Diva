@@ -160,31 +160,47 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         glowOpacity.setValue(0.4);
         glowScale.setValue(1);
         
-        // Smooth floating — like levitating in space
+        // Smooth floating — seamless loop (always returns to center)
         const float = Animated.loop(
           Animated.sequence([
-            // Float up with slight stretch
+            // Float up
             Animated.parallel([
               Animated.timing(translateY, { toValue: -10, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
               Animated.timing(scaleY, { toValue: 1.03, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
               Animated.timing(scaleX, { toValue: 0.98, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
               Animated.timing(glowOpacity, { toValue: 0.55, duration: 2000, useNativeDriver: true }),
             ]),
-            // Float down with slight squash
+            // Return to center
+            Animated.parallel([
+              Animated.timing(translateY, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(scaleY, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(scaleX, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(glowOpacity, { toValue: 0.4, duration: 2000, useNativeDriver: true }),
+            ]),
+            // Float down
             Animated.parallel([
               Animated.timing(translateY, { toValue: 6, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
               Animated.timing(scaleY, { toValue: 0.98, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
               Animated.timing(scaleX, { toValue: 1.02, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
               Animated.timing(glowOpacity, { toValue: 0.35, duration: 2000, useNativeDriver: true }),
             ]),
+            // Return to center (seamless loop restart)
+            Animated.parallel([
+              Animated.timing(translateY, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(scaleY, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(scaleX, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(glowOpacity, { toValue: 0.4, duration: 2000, useNativeDriver: true }),
+            ]),
           ])
         );
         
-        // Gentle idle sway — slow, dreamy
+        // Gentle idle sway — slow, dreamy, seamless loop
         const idleSway = Animated.loop(
           Animated.sequence([
             Animated.timing(sway, { toValue: 0.4, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+            Animated.timing(sway, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
             Animated.timing(sway, { toValue: -0.4, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+            Animated.timing(sway, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
           ])
         );
         
