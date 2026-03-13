@@ -45,8 +45,8 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
   const translateY = useRef(new Animated.Value(0)).current;
   const tilt = useRef(new Animated.Value(0)).current;
   
-  // Glow
-  const glowOpacity = useRef(new Animated.Value(0.5)).current;
+  // Glow — start subtle, animate up on interaction
+  const glowOpacity = useRef(new Animated.Value(isDark ? 0.45 : 0.25)).current;
   const glowScale = useRef(new Animated.Value(1)).current;
   
   // Ring ripples
@@ -286,15 +286,15 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
   });
 
   const orbBorderColor = isDark 
-    ? 'rgba(140, 150, 255, 0.22)' 
+    ? 'rgba(180,190,255,0.14)' 
     : 'rgba(0,0,0,0.06)';
   
-  // Dark glass sphere: dark navy opaque (like the mockup), not transparent
+  // Glass sphere: slight tint so the orb has shape without being a black circle
   const orbBgColor = isDark
-    ? 'rgba(6, 6, 26, 0.82)'
-    : 'rgba(255,255,255,0.6)';
+    ? 'rgba(30, 28, 70, 0.38)'      // subtle dark indigo tint
+    : 'rgba(255,255,255,0.28)';      // less opaque in light mode
 
-  const glassHighlightOpacity = isDark ? 0.55 : 0.30;
+  const glassHighlightOpacity = isDark ? 0.18 : 0.15;
 
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} onPressOut={onPressOut} style={styles.container}>
@@ -304,9 +304,17 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         styles.glowContainer,
         { transform: [{ scale: glowScale }], opacity: glowOpacity }
       ]}>
-        <RadialGlow size={ORB_SIZE * 1.8} color={colors.glow} id={`glow-${state}`} />
+        <RadialGlow size={ORB_SIZE * 2.2} color={colors.glow} id={`glow-${state}`} />
       </Animated.View>
       
+      {/* Ripple rings — thin, subtle */}
+      {(state === 'listening' || state === 'speaking') && (
+        <>
+          <Animated.View style={[styles.ring, { borderColor: colors.ring, transform: [{ scale: ring1Scale }], opacity: ring1Opacity }]} />
+          <Animated.View style={[styles.ring, { borderColor: colors.ring, transform: [{ scale: ring2Scale }], opacity: ring2Opacity }]} />
+        </>
+      )}
+
       {/* Orb + Mascot */}
       <Animated.View
         style={[
@@ -321,14 +329,6 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
           },
         ]}
       >
-        {/* Ripple rings INSIDE the glass sphere */}
-        {(state === 'listening' || state === 'speaking') && (
-          <>
-            <Animated.View style={[styles.ring, { borderColor: colors.ring, transform: [{ scale: ring1Scale }], opacity: ring1Opacity }]} />
-            <Animated.View style={[styles.ring, { borderColor: colors.ring, transform: [{ scale: ring2Scale }], opacity: ring2Opacity }]} />
-          </>
-        )}
-
         {/* Glass orb background */}
         <View style={[
           styles.orbGlass,
@@ -347,10 +347,8 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
             }),
           },
         ]}>
-          {/* Glass highlight — large crescent top-left (primary specular) */}
+          {/* Subtle glass highlight */}
           <View style={[styles.glassShine, { opacity: glassHighlightOpacity }]} />
-          {/* Secondary specular — small glow bottom-right */}
-          <View style={[styles.glassShine2, { opacity: glassHighlightOpacity * 0.35 }]} />
         </View>
         
         {/* Mascot */}
@@ -423,27 +421,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   
-  // Large crescent arc at the top of the orb (primary specular highlight)
   glassShine: {
     position: 'absolute',
-    top: 10,
-    left: 10,
-    width: ORB_SIZE * 0.70,
-    height: ORB_SIZE * 0.14,
-    borderRadius: 50,
+    top: 14,
+    left: 22,
+    width: ORB_SIZE * 0.4,
+    height: ORB_SIZE * 0.18,
+    borderRadius: 40,
     backgroundColor: '#FFFFFF',
-    transform: [{ rotate: '-12deg' }],
-  },
-  // Secondary bottom-right specular
-  glassShine2: {
-    position: 'absolute',
-    bottom: 18,
-    right: 16,
-    width: ORB_SIZE * 0.28,
-    height: ORB_SIZE * 0.08,
-    borderRadius: 30,
-    backgroundColor: '#FFFFFF',
-    transform: [{ rotate: '18deg' }],
+    transform: [{ rotate: '-15deg' }],
   },
   
   mascot: {
