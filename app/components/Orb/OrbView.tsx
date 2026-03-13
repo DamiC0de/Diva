@@ -8,7 +8,7 @@ import { useTheme } from '../../constants/theme';
 import { GlassSphere } from './GlassSphere';
 import { SoftGlow } from './SoftGlow';
 import { FloatingParticles } from './FloatingParticles';
-import { EyeBlink } from './EyeBlink';
+// EyeBlink removed — needs mascot without eyes to work properly
 
 export type OrbState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
 
@@ -638,12 +638,7 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
           intensity={state === 'speaking' || state === 'listening' ? 'active' : 'idle'}
         />
         
-        {/* Eye blink overlay */}
-        <EyeBlink 
-          mascotSize={MASCOT_SIZE} 
-          orbSize={ORB_SIZE} 
-          state={state === 'listening' ? 'listening' : (state === 'speaking' ? 'speaking' : 'idle')}
-        />
+
         
         {/* Animated mouth — speaking */}
         {state === 'speaking' && (
