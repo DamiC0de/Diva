@@ -43,7 +43,12 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
   // Shake for error
   const shakeX = useRef(new Animated.Value(0)).current;
   
+  // Mouth animation (speaking)
+  const mouthOpen = useRef(new Animated.Value(0)).current;
+  const mouthOpacity = useRef(new Animated.Value(0)).current;
+  
   const animRef = useRef<Animated.CompositeAnimation | null>(null);
+  const mouthAnimRef = useRef<Animated.CompositeAnimation | null>(null);
 
   // Debug: log state changes
   useEffect(() => {
@@ -64,8 +69,10 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
   // Reset all animations with smooth transition
   const resetAnimations = () => {
     animRef.current?.stop();
+    mouthAnimRef.current?.stop();
     [scale, translateY, rotate, tilt, glowOpacity, glowScale, 
-     ring1Scale, ring1Opacity, ring2Scale, ring2Opacity, ring3Scale, ring3Opacity, shakeX]
+     ring1Scale, ring1Opacity, ring2Scale, ring2Opacity, ring3Scale, ring3Opacity, shakeX,
+     mouthOpen, mouthOpacity]
       .forEach(anim => anim.stopAnimation());
     
     // Reset ALL values to neutral
@@ -79,6 +86,8 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
     ring1Opacity.setValue(0);
     ring2Opacity.setValue(0);
     ring3Opacity.setValue(0);
+    mouthOpen.setValue(0);
+    mouthOpacity.setValue(0);
   };
 
   // Ripple ring animation (for listening/speaking)
@@ -248,6 +257,23 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         translateY.setValue(0);
         glowOpacity.setValue(1);
         glowScale.setValue(1.6);
+        
+        // Mouth appears with fade-in
+        Animated.timing(mouthOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+        
+        // Mouth opens/closes rhythmically like talking
+        mouthAnimRef.current = Animated.loop(
+          Animated.sequence([
+            Animated.timing(mouthOpen, { toValue: 1, duration: 120, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.3, duration: 80, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.8, duration: 100, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.1, duration: 90, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.6, duration: 110, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0, duration: 100, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+            Animated.delay(80), // Brief pause between "words"
+          ])
+        );
+        mouthAnimRef.current.start();
         
         // Energetic "talking" bounce - like the mascot is speaking with enthusiasm
         const talkBounce = Animated.loop(
@@ -422,6 +448,32 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
           style={styles.mascot}
           resizeMode="contain"
         />
+        
+        {/* Animated mouth — appears when speaking */}
+        {state === 'speaking' && (
+          <Animated.View
+            style={[
+              styles.mouthContainer,
+              { opacity: mouthOpacity },
+            ]}
+          >
+            <Animated.View
+              style={[
+                styles.mouth,
+                {
+                  backgroundColor: 'rgba(90, 50, 140, 0.7)',
+                  transform: [
+                    { scaleY: mouthOpen.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.2, 1],
+                      })
+                    },
+                  ],
+                },
+              ]}
+            />
+          </Animated.View>
+        )}
       </Animated.View>
     </Pressable>
   );
@@ -456,5 +508,17 @@ const styles = StyleSheet.create({
   mascot: {
     width: MASCOT_SIZE,
     height: MASCOT_SIZE,
+  },
+  mouthContainer: {
+    position: 'absolute',
+    bottom: MASCOT_SIZE * 0.32, // Position below the eyes
+    alignSelf: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mouth: {
+    width: 16,
+    height: 12,
+    borderRadius: 8,
   },
 });
