@@ -23,6 +23,7 @@ const RING_BASE_SIZE = ORB_SIZE;
 
 export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOut }: OrbViewProps) {
   const theme = useTheme();
+  const isDark = theme.statusBar === 'light';
   
   // Core animations
   const scale = useRef(new Animated.Value(1)).current;
@@ -443,11 +444,11 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
           },
         ]}
       >
-        {/* SVG Glass sphere */}
+        {/* SVG Glass sphere — dark crystal ball */}
         <GlassSphere 
           size={ORB_SIZE} 
           showRipples={state === 'speaking' || state === 'listening'}
-          rippleColor={state === 'listening' ? 'rgba(125,211,232,0.2)' : 'rgba(150,150,220,0.15)'}
+          isDark={isDark}
         />
         
         {/* Mascot */}
@@ -495,9 +496,9 @@ const styles = StyleSheet.create({
   },
   glow: { 
     position: 'absolute',
-    width: ORB_SIZE * 1.3, 
-    height: ORB_SIZE * 1.3, 
-    borderRadius: ORB_SIZE * 0.65,
+    width: ORB_SIZE * 1.5, 
+    height: ORB_SIZE * 1.5, 
+    borderRadius: ORB_SIZE * 0.75,
   },
   ring: {
     position: 'absolute',
