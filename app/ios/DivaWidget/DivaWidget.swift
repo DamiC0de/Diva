@@ -54,29 +54,30 @@ private let brandIndigo = Color(red: 0.35, green: 0.34, blue: 0.84)
 private let brandViolet = Color(red: 0.29, green: 0.29, blue: 0.57)
 private let bgDark      = Color(red: 0.05, green: 0.05, blue: 0.08)
 
-private var orbGradient: AngularGradient {
-    AngularGradient(
-        gradient: Gradient(colors: [brandCyan, brandIndigo, brandViolet, brandIndigo, brandCyan]),
-        center: .center
-    )
-}
+// MARK: - Mascot View Component
 
-// MARK: - Orb View Component
-
-struct OrbView: View {
+struct MascotView: View {
     let size: CGFloat
     var body: some View {
         ZStack {
+            // Glow ring behind mascot
             Circle()
-                .fill(orbGradient)
+                .fill(
+                    RadialGradient(
+                        colors: [brandCyan.opacity(0.35), brandIndigo.opacity(0.15), .clear],
+                        center: .center,
+                        startRadius: size * 0.1,
+                        endRadius: size * 0.55
+                    )
+                )
+                .frame(width: size * 1.1, height: size * 1.1)
+
+            // Mascot image
+            Image("DivaLogo")
+                .resizable()
+                .scaledToFit()
                 .frame(width: size, height: size)
-                .shadow(color: brandIndigo.opacity(0.7), radius: size * 0.2, x: 0, y: 4)
-            Circle()
-                .fill(bgDark.opacity(0.35))
-                .frame(width: size * 0.70, height: size * 0.70)
-            Image(systemName: "waveform")
-                .font(.system(size: size * 0.28, weight: .semibold))
-                .foregroundColor(.white)
+                .shadow(color: brandCyan.opacity(0.6), radius: size * 0.15, x: 0, y: 4)
         }
     }
 }
@@ -90,11 +91,11 @@ struct SmallWidgetView: View {
         ZStack {
             bgDark
 
-            VStack(spacing: 10) {
-                OrbView(size: 58)
+            VStack(spacing: 6) {
+                MascotView(size: 58)
 
                 Text("Diva")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
 
                 // Use Link (URL scheme) for reliable widget→app communication.
@@ -130,8 +131,8 @@ struct MediumWidgetView: View {
 
             HStack(spacing: 0) {
                 // Left panel — orb + button
-                VStack(spacing: 10) {
-                    OrbView(size: 54)
+                VStack(spacing: 6) {
+                    MascotView(size: 54)
 
                     Text("Diva")
                         .font(.system(size: 12, weight: .bold, design: .rounded))

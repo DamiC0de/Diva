@@ -55,6 +55,7 @@
 		A1B2C3D4E5F6789012345678 /* DivaIntents.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = DivaIntents.swift; path = DivaWidget/DivaIntents.swift; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = Diva/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
+		E1A2B3C4D5E6F70812345681 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = DivaWidget/Assets.xcassets; sourceTree = "<group>"; };
 		C1D2E3F4A5B6789012345680 /* DivaWidgetBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DivaWidgetBridge.swift; path = Diva/DivaWidgetBridge.swift; sourceTree = "<group>"; };
 		C292E53C855BDFBFE0C1D705 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Diva/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		D641583A1E2AC04C77B92BE0 /* Pods-Diva.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Diva.release.xcconfig"; path = "Target Support Files/Pods-Diva/Pods-Diva.release.xcconfig"; sourceTree = "<group>"; };
@@ -82,7 +83,8 @@
 			isa = PBXGroup;
 			children = (
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
-				C1D2E3F4A5B6789012345680 /* DivaWidgetBridge.swift */,
+				E1A2B3C4D5E6F70812345681 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = DivaWidget/Assets.xcassets; sourceTree = "<group>"; };
+		C1D2E3F4A5B6789012345680 /* DivaWidgetBridge.swift */,
 				E1F2A3B4C5D6789012345682 /* DivaWidgetBridge.m */,
 				F11748442D0722820044C1D9 /* Diva-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
@@ -177,6 +179,7 @@
 			buildConfigurationList = BD4F7CDB9CFD4E4284680B4C /* Build configuration list for PBXNativeTarget "DivaWidget" */;
 			buildPhases = (
 				D5AC959E29F9C75FF0645192 /* Sources */,
+				E1A2B3C4D5E6F70812345683 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -412,7 +415,7 @@
 				CODE_SIGN_ENTITLEMENTS = Diva/Diva.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -452,7 +455,7 @@
 				CODE_SIGN_ENTITLEMENTS = Diva/Diva.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				INFOPLIST_FILE = Diva/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -483,7 +486,7 @@
 				CODE_SIGN_ENTITLEMENTS = DivaWidget/DivaWidget.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				INFOPLIST_FILE = DivaWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -628,7 +631,7 @@
 				CODE_SIGN_ENTITLEMENTS = DivaWidget/DivaWidget.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"DEBUG=1",
