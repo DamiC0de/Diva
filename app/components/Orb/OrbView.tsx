@@ -7,6 +7,8 @@ import { StyleSheet, Animated, Pressable, Easing, Image, View } from 'react-nati
 import { useTheme } from '../../constants/theme';
 import { GlassSphere } from './GlassSphere';
 import { SoftGlow } from './SoftGlow';
+import { FloatingParticles } from './FloatingParticles';
+import * as Haptics from 'expo-haptics';
 
 export type OrbState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
 
@@ -449,6 +451,7 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
 
   // Press feedback — satisfying spring effect
   const handlePressIn = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Animated.spring(pressScale, {
       toValue: 0.92,
       damping: 15,
@@ -557,11 +560,12 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
           resizeMode="contain"
         />
         
-        {/* Floating particles */}
-        <View style={[styles.particle, { top: '18%', right: '22%', backgroundColor: theme.cyan }]} />
-        <View style={[styles.particle, { bottom: '25%', left: '18%', backgroundColor: theme.indigoLight, width: 5, height: 5 }]} />
-        <View style={[styles.particle, { top: '30%', left: '20%', backgroundColor: theme.cyan, width: 4, height: 4 }]} />
-        <View style={[styles.particle, { bottom: '20%', right: '25%', backgroundColor: theme.violet, width: 5, height: 5 }]} />
+        {/* Floating particles — animated fireflies */}
+        <FloatingParticles 
+          size={ORB_SIZE} 
+          colors={{ cyan: theme.cyan, violet: theme.violet, indigoLight: theme.indigoLight }}
+          intensity={state === 'speaking' || state === 'listening' ? 'active' : 'idle'}
+        />
         
         {/* Animated mouth — speaking */}
         {state === 'speaking' && (
@@ -623,13 +627,7 @@ const styles = StyleSheet.create({
     width: MASCOT_SIZE,
     height: MASCOT_SIZE,
   },
-  particle: {
-    position: 'absolute',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    opacity: 0.7,
-  },
+
   mouthWrap: {
     position: 'absolute',
     // Mascot 130px centered in 200px orbWrapper → mascot top = 35px
