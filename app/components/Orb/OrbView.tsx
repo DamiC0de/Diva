@@ -3,8 +3,9 @@
  * 2026 Design: Living mascot that listens and speaks
  */
 import React, { useEffect, useRef, useMemo } from 'react';
-import { StyleSheet, Animated, Pressable, Easing, Image } from 'react-native';
+import { StyleSheet, Animated, Pressable, Easing, Image, View } from 'react-native';
 import { useTheme } from '../../constants/theme';
+import { GlassSphere } from './GlassSphere';
 
 export type OrbState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
 
@@ -16,8 +17,9 @@ interface OrbViewProps {
   onPressOut?: () => void;
 }
 
-const MASCOT_SIZE = 140;
-const RING_BASE_SIZE = 180;
+const MASCOT_SIZE = 130;
+const ORB_SIZE = 200;
+const RING_BASE_SIZE = ORB_SIZE;
 
 export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOut }: OrbViewProps) {
   const theme = useTheme();
@@ -415,7 +417,7 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         </>
       )}
       
-      {/* Main glow */}
+      {/* Soft glow behind the sphere */}
       <Animated.View
         style={[
           styles.glow,
@@ -427,10 +429,10 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         ]}
       />
 
-      {/* Mascot with expressive animations */}
+      {/* Glass sphere + Mascot — move together */}
       <Animated.View
         style={[
-          styles.mascotContainer,
+          styles.orbWrapper,
           {
             transform: [
               { scale },
@@ -441,11 +443,25 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
           },
         ]}
       >
+        {/* SVG Glass sphere */}
+        <GlassSphere 
+          size={ORB_SIZE} 
+          showRipples={state === 'speaking' || state === 'listening'}
+          rippleColor={state === 'listening' ? 'rgba(125,211,232,0.2)' : 'rgba(150,150,220,0.15)'}
+        />
+        
+        {/* Mascot */}
         <Image
           source={require('../../assets/images/diva-logo.png')}
           style={styles.mascot}
           resizeMode="contain"
         />
+        
+        {/* Floating particles */}
+        <View style={[styles.particle, { top: '18%', right: '22%', backgroundColor: theme.cyan }]} />
+        <View style={[styles.particle, { bottom: '25%', left: '18%', backgroundColor: theme.indigoLight, width: 5, height: 5 }]} />
+        <View style={[styles.particle, { top: '30%', left: '20%', backgroundColor: theme.cyan, width: 4, height: 4 }]} />
+        <View style={[styles.particle, { bottom: '20%', right: '25%', backgroundColor: theme.violet, width: 5, height: 5 }]} />
         
         {/* Animated mouth — speaking */}
         {state === 'speaking' && (
@@ -479,20 +495,20 @@ const styles = StyleSheet.create({
   },
   glow: { 
     position: 'absolute',
-    width: 200, 
-    height: 200, 
-    borderRadius: 100,
+    width: ORB_SIZE * 1.3, 
+    height: ORB_SIZE * 1.3, 
+    borderRadius: ORB_SIZE * 0.65,
   },
   ring: {
     position: 'absolute',
     width: RING_BASE_SIZE,
     height: RING_BASE_SIZE,
     borderRadius: RING_BASE_SIZE / 2,
-    borderWidth: 2,
+    borderWidth: 1.5,
   },
-  mascotContainer: {
-    width: MASCOT_SIZE,
-    height: MASCOT_SIZE,
+  orbWrapper: {
+    width: ORB_SIZE,
+    height: ORB_SIZE,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -500,9 +516,16 @@ const styles = StyleSheet.create({
     width: MASCOT_SIZE,
     height: MASCOT_SIZE,
   },
+  particle: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    opacity: 0.7,
+  },
   mouthWrap: {
     position: 'absolute',
-    bottom: MASCOT_SIZE * 0.28,
+    bottom: ORB_SIZE * 0.30,
     justifyContent: 'center',
     alignItems: 'center',
   },
