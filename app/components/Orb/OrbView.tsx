@@ -8,7 +8,7 @@ import { useTheme } from '../../constants/theme';
 import { GlassSphere } from './GlassSphere';
 import { SoftGlow } from './SoftGlow';
 import { FloatingParticles } from './FloatingParticles';
-// EyeBlink removed — needs mascot without eyes to work properly
+import * as Haptics from 'expo-haptics';
 
 export type OrbState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
 
@@ -508,6 +508,7 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
 
   // Press feedback — satisfying spring effect
   const handlePressIn = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Animated.spring(pressScale, {
       toValue: 0.92,
       damping: 15,
