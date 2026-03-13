@@ -525,14 +525,19 @@ const styles = StyleSheet.create({
   },
   mouthWrap: {
     position: 'absolute',
-    bottom: ORB_SIZE * 0.30,
+    // Mascot 130px centered in 200px orbWrapper → mascot top = 35px
+    // Mouth at 53% from mascot top (between eyes ~40% and body ~60%)
+    // 35 + (130 * 0.53) = 35 + 69 = 104px from orbWrapper top
+    top: (ORB_SIZE - MASCOT_SIZE) / 2 + MASCOT_SIZE * 0.53,
+    // Slightly left of center (mascot body curves left)
+    left: (ORB_SIZE - MASCOT_SIZE) / 2 + MASCOT_SIZE * 0.47,
     justifyContent: 'center',
     alignItems: 'center',
   },
   mouth: {
-    width: 14,
-    height: 10,
-    borderRadius: 7,
-    backgroundColor: 'rgba(80, 40, 130, 0.6)',
+    width: 12,
+    height: 9,
+    borderRadius: 6,
+    backgroundColor: 'rgba(80, 40, 130, 0.55)',
   },
 });
