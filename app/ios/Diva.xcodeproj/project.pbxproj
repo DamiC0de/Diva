@@ -83,8 +83,8 @@
 			isa = PBXGroup;
 			children = (
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
-				E1A2B3C4D5E6F70812345681 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = DivaWidget/Assets.xcassets; sourceTree = "<group>"; };
-		C1D2E3F4A5B6789012345680 /* DivaWidgetBridge.swift */,
+				E1A2B3C4D5E6F70812345681 /* Assets.xcassets */,
+				C1D2E3F4A5B6789012345680 /* DivaWidgetBridge.swift */,
 				E1F2A3B4C5D6789012345682 /* DivaWidgetBridge.m */,
 				F11748442D0722820044C1D9 /* Diva-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
@@ -415,7 +415,7 @@
 				CODE_SIGN_ENTITLEMENTS = Diva/Diva.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -455,7 +455,7 @@
 				CODE_SIGN_ENTITLEMENTS = Diva/Diva.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				INFOPLIST_FILE = Diva/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -486,7 +486,7 @@
 				CODE_SIGN_ENTITLEMENTS = DivaWidget/DivaWidget.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				INFOPLIST_FILE = DivaWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -631,7 +631,7 @@
 				CODE_SIGN_ENTITLEMENTS = DivaWidget/DivaWidget.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"DEBUG=1",
