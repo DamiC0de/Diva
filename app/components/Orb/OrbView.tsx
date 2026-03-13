@@ -28,9 +28,12 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
   
   // Core animations
   const scale = useRef(new Animated.Value(1)).current;
+  const scaleX = useRef(new Animated.Value(1)).current; // Squash & stretch
+  const scaleY = useRef(new Animated.Value(1)).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const rotate = useRef(new Animated.Value(0)).current;
   const tilt = useRef(new Animated.Value(0)).current; // For "listening" lean
+  const sway = useRef(new Animated.Value(0)).current; // Speaking body sway
   
   // Glow animations
   const glowOpacity = useRef(new Animated.Value(0.3)).current;
@@ -74,17 +77,20 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
   const resetAnimations = () => {
     animRef.current?.stop();
     mouthAnimRef.current?.stop();
-    [scale, translateY, rotate, tilt, glowOpacity, glowScale, 
+    [scale, scaleX, scaleY, translateY, rotate, tilt, sway, glowOpacity, glowScale, 
      ring1Scale, ring1Opacity, ring2Scale, ring2Opacity, ring3Scale, ring3Opacity, shakeX,
      mouthOpen, mouthOpacity]
       .forEach(anim => anim.stopAnimation());
     
     // Reset ALL values to neutral
     scale.setValue(1);
+    scaleX.setValue(1);
+    scaleY.setValue(1);
     translateY.setValue(0);
     shakeX.setValue(0);
     rotate.setValue(0);
     tilt.setValue(0);
+    sway.setValue(0);
     glowScale.setValue(1);
     glowOpacity.setValue(0.4);
     ring1Opacity.setValue(0);
@@ -256,71 +262,105 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
       
       case 'speaking': {
         console.log('[OrbView] Starting SPEAKING animation');
-        // Set initial values
         scale.setValue(1);
+        scaleX.setValue(1);
+        scaleY.setValue(1);
         translateY.setValue(0);
+        sway.setValue(0);
         glowOpacity.setValue(1);
-        glowScale.setValue(1.6);
+        glowScale.setValue(1.5);
         
-        // Mouth animation
+        // Mouth animation — natural speech rhythm with pauses
         Animated.timing(mouthOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
         mouthAnimRef.current = Animated.loop(
           Animated.sequence([
-            Animated.timing(mouthOpen, { toValue: 1, duration: 120, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-            Animated.timing(mouthOpen, { toValue: 0.2, duration: 80, useNativeDriver: true }),
-            Animated.timing(mouthOpen, { toValue: 0.7, duration: 100, useNativeDriver: true }),
+            // Syllable burst 1
+            Animated.timing(mouthOpen, { toValue: 1, duration: 100, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.3, duration: 70, useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.8, duration: 90, useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.15, duration: 80, useNativeDriver: true }),
+            // Syllable burst 2
+            Animated.timing(mouthOpen, { toValue: 0.6, duration: 85, useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.9, duration: 95, useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.2, duration: 75, useNativeDriver: true }),
+            // Brief pause (between words)
+            Animated.timing(mouthOpen, { toValue: 0.05, duration: 60, useNativeDriver: true }),
+            Animated.delay(40),
+            // Syllable burst 3
+            Animated.timing(mouthOpen, { toValue: 0.7, duration: 80, useNativeDriver: true }),
             Animated.timing(mouthOpen, { toValue: 0.1, duration: 90, useNativeDriver: true }),
-            Animated.timing(mouthOpen, { toValue: 0.5, duration: 110, useNativeDriver: true }),
-            Animated.timing(mouthOpen, { toValue: 0, duration: 100, useNativeDriver: true }),
-            Animated.delay(60),
+            Animated.timing(mouthOpen, { toValue: 0, duration: 70, useNativeDriver: true }),
+            Animated.delay(50),
           ])
         );
         mouthAnimRef.current.start();
         
-        // Energetic "talking" bounce - like the mascot is speaking with enthusiasm
-        const talkBounce = Animated.loop(
+        // Squash & stretch bounce — organic, Pixar-style
+        const squashStretch = Animated.loop(
           Animated.sequence([
-            // Quick bounce up
+            // Stretch up (excitement)
             Animated.parallel([
-              Animated.timing(scale, { toValue: 1.18, duration: 120, easing: Easing.out(Easing.back(1.5)), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: -18, duration: 120, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+              Animated.timing(scaleX, { toValue: 0.94, duration: 130, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+              Animated.timing(scaleY, { toValue: 1.12, duration: 130, easing: Easing.out(Easing.back(1.2)), useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: -12, duration: 130, useNativeDriver: true }),
             ]),
-            // Squash down
+            // Squash (landing)
             Animated.parallel([
-              Animated.timing(scale, { toValue: 0.92, duration: 100, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: 8, duration: 100, useNativeDriver: true }),
+              Animated.timing(scaleX, { toValue: 1.08, duration: 100, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+              Animated.timing(scaleY, { toValue: 0.93, duration: 100, useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: 5, duration: 100, useNativeDriver: true }),
+            ]),
+            // Recover
+            Animated.parallel([
+              Animated.timing(scaleX, { toValue: 1, duration: 90, useNativeDriver: true }),
+              Animated.timing(scaleY, { toValue: 1.03, duration: 90, useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: 0, duration: 90, useNativeDriver: true }),
+            ]),
+            // Small emphasis
+            Animated.parallel([
+              Animated.timing(scaleX, { toValue: 0.97, duration: 110, useNativeDriver: true }),
+              Animated.timing(scaleY, { toValue: 1.06, duration: 110, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: -6, duration: 110, useNativeDriver: true }),
             ]),
             // Settle
             Animated.parallel([
-              Animated.timing(scale, { toValue: 1.05, duration: 80, useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: 0, duration: 80, useNativeDriver: true }),
-            ]),
-            // Small bounce
-            Animated.parallel([
-              Animated.timing(scale, { toValue: 1.1, duration: 100, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: -8, duration: 100, useNativeDriver: true }),
+              Animated.timing(scaleX, { toValue: 1.02, duration: 80, useNativeDriver: true }),
+              Animated.timing(scaleY, { toValue: 0.98, duration: 80, useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: 2, duration: 80, useNativeDriver: true }),
             ]),
             // Return
             Animated.parallel([
-              Animated.timing(scale, { toValue: 1, duration: 100, useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: 0, duration: 100, useNativeDriver: true }),
+              Animated.timing(scaleX, { toValue: 1, duration: 90, useNativeDriver: true }),
+              Animated.timing(scaleY, { toValue: 1, duration: 90, useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: 0, duration: 90, useNativeDriver: true }),
             ]),
           ])
         );
         
-        // Intense glow pulsing
+        // Body sway — gentle left-right like talking with body language
+        const bodySway = Animated.loop(
+          Animated.sequence([
+            Animated.timing(sway, { toValue: 1, duration: 600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+            Animated.timing(sway, { toValue: -1, duration: 600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+            Animated.timing(sway, { toValue: 0.5, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+            Animated.timing(sway, { toValue: -0.5, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+            Animated.timing(sway, { toValue: 0, duration: 300, useNativeDriver: true }),
+          ])
+        );
+        
+        // Glow breathing with speech
         const glowPulse = Animated.loop(
           Animated.sequence([
-            Animated.timing(glowScale, { toValue: 1.9, duration: 250, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-            Animated.timing(glowOpacity, { toValue: 0.7, duration: 150, useNativeDriver: true }),
-            Animated.timing(glowScale, { toValue: 1.4, duration: 250, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-            Animated.timing(glowOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+            Animated.timing(glowScale, { toValue: 1.8, duration: 300, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+            Animated.timing(glowOpacity, { toValue: 0.6, duration: 200, useNativeDriver: true }),
+            Animated.timing(glowScale, { toValue: 1.4, duration: 300, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+            Animated.timing(glowOpacity, { toValue: 0.9, duration: 200, useNativeDriver: true }),
           ])
         );
         
         const ripple = createRippleAnimation();
         
-        animRef.current = Animated.parallel([talkBounce, glowPulse, ripple]);
+        animRef.current = Animated.parallel([squashStretch, bodySway, glowPulse, ripple]);
         animRef.current.start();
         break;
       }
@@ -379,6 +419,11 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
   const rotateInterp = rotate.interpolate({
     inputRange: [-1, 1],
     outputRange: ['-15deg', '15deg'],
+  });
+  
+  const swayInterp = sway.interpolate({
+    inputRange: [-1, 0, 1],
+    outputRange: ['-6deg', '0deg', '6deg'],
   });
 
   return (
@@ -439,9 +484,11 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
           {
             transform: [
               { scale },
+              { scaleX },
+              { scaleY },
               { translateY },
               { translateX: shakeX },
-              { rotate: state === 'listening' ? tiltInterp : rotateInterp },
+              { rotate: state === 'speaking' ? swayInterp : (state === 'listening' ? tiltInterp : rotateInterp) },
             ],
           },
         ]}
