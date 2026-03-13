@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useMemo } from 'react';
 import { StyleSheet, Animated, Pressable, Easing, Image, View } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { GlassSphere } from './GlassSphere';
+import { SoftGlow } from './SoftGlow';
 
 export type OrbState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
 
@@ -418,17 +419,18 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         </>
       )}
       
-      {/* Soft glow behind the sphere */}
+      {/* Soft radial glow behind the sphere — SVG gradient, no solid disc */}
       <Animated.View
         style={[
           styles.glow,
           {
-            backgroundColor: colors.glow,
             transform: [{ scale: glowScale }],
             opacity: glowOpacity,
           },
         ]}
-      />
+      >
+        <SoftGlow size={ORB_SIZE * 1.6} color={colors.glow} />
+      </Animated.View>
 
       {/* Glass sphere + Mascot — move together */}
       <Animated.View
@@ -496,9 +498,8 @@ const styles = StyleSheet.create({
   },
   glow: { 
     position: 'absolute',
-    width: ORB_SIZE * 1.5, 
-    height: ORB_SIZE * 1.5, 
-    borderRadius: ORB_SIZE * 0.75,
+    width: ORB_SIZE * 1.6, 
+    height: ORB_SIZE * 1.6, 
   },
   ring: {
     position: 'absolute',
