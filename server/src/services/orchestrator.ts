@@ -21,7 +21,7 @@ import * as TelegramUser from './telegramUser.js';
 import { InboundMessageSchema } from '../schemas/ws-messages.js';
 import { checkRateLimit, getRateLimitConfig } from '../lib/rateLimiter.js';
 import { loadHistory, saveMessage, pruneHistory } from '../lib/conversationHistory.js';
-import { getLatestArticles, searchArticles, getLatestComparisons, searchComparisons } from '../lib/glucose.js';
+import { getLatestComparisons, searchComparisons } from '../lib/glucose.js';
 
 // Request states
 export enum RequestState {
@@ -487,7 +487,7 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
   },
   {
     name: 'get_glucose',
-    description: "OBLIGATOIRE quand l'utilisateur mentionne 'glucose', 'glucose.press', ou demande des articles/news/dossiers/flashes/actu. Ce tool accède à la base de données glucose.press. Il peut chercher dans les ARTICLES (actualités individuelles), les DOSSIERS APPROFONDIS (analyses comparatives multi-sources), ou les DEUX. Utilise-le À LA PLACE de web_search pour tout ce qui concerne glucose.",
+    description: "OBLIGATOIRE quand l'utilisateur mentionne 'glucose', 'glucose.press', ou demande des articles/news/dossiers/actu. Ce tool accède aux analyses comparatives multi-sources de glucose.press. Chaque analyse croise plusieurs médias internationaux sur un même sujet. Utilise-le À LA PLACE de web_search pour tout ce qui concerne glucose.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -501,12 +501,7 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
         },
         full_content: {
           type: 'boolean',
-          description: "Si true, retourne le contenu COMPLET du premier résultat trouvé.",
-        },
-        content_type: {
-          type: 'string',
-          enum: ['all', 'articles', 'dossiers'],
-          description: "Type de contenu: 'all' (articles + dossiers, défaut), 'articles' (actualités/flashes), 'dossiers' (analyses approfondies).",
+          description: "Si true, retourne le contenu COMPLET du premier article trouvé. Utilise quand l'utilisateur veut LIRE un article.",
         },
       },
     },
@@ -1318,39 +1313,22 @@ export class Orchestrator {
         // Check if user wants full content
         const wantsFull = /(lis|lire|entier|complet|intégral|détail)/i.test(text);
         
-        // Search BOTH articles AND comparisons
-        const [articles, comparisons] = await Promise.all([
-          searchTerm ? searchArticles(searchTerm, 5) : getLatestArticles(5),
-          searchTerm ? searchComparisons(searchTerm, 3) : getLatestComparisons(3),
-        ]);
+        // Search comparisons only (the content visible on glucose.press)
+        const comparisons = searchTerm 
+          ? await searchComparisons(searchTerm, 5) 
+          : await getLatestComparisons(5);
         
-        const hasContent = articles.length > 0 || comparisons.length > 0;
-        
-        if (hasContent) {
-          let glucoseContext = '[DONNÉES GLUCOSE.PRESS]\n\n';
+        if (comparisons.length > 0) {
+          let glucoseContext = '[DONNÉES GLUCOSE.PRESS — Analyses comparatives multi-sources]\n\n';
           
-          // Articles section
-          if (articles.length > 0) {
-            if (wantsFull) {
-              const a = articles[0];
-              const date = new Date(a.published_at).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-              glucoseContext += `📰 ARTICLE: ${a.title_fr || a.title}\n(${a.source_name || 'Source'} — ${date})\n${a.summary_gemma || ''}\n🔗 ${a.url}\n\n`;
-            } else {
-              glucoseContext += `📰 ARTICLES (${articles.length}):\n`;
-              articles.forEach((a, i) => {
-                const date = new Date(a.published_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short' });
-                glucoseContext += `${i + 1}. ${a.title_fr || a.title} (${a.source_name || '?'}) — ${date}\n`;
-              });
-              glucoseContext += '\n';
-            }
-          }
-          
-          // Dossiers section
-          if (comparisons.length > 0) {
-            glucoseContext += `📊 DOSSIERS APPROFONDIS (${comparisons.length}):\n`;
+          if (wantsFull && comparisons.length > 0) {
+            const c = comparisons[0];
+            const date = new Date(c.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+            glucoseContext += `📊 ${c.title}\n(${c.sources_count} sources de ${c.countries_count} pays — ${date})\n\n${c.content || c.summary || 'Contenu non disponible'}`;
+          } else {
             comparisons.forEach((c, i) => {
               const date = new Date(c.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short' });
-              glucoseContext += `${i + 1}. ${c.title} (${c.sources_count} sources, ${c.countries_count} pays) — ${date}${c.summary ? `\n   ${c.summary.substring(0, 150)}...` : ''}\n`;
+              glucoseContext += `${i + 1}. ${c.title} (${c.sources_count} sources, ${c.countries_count} pays) — ${date}${c.summary ? `\n   ${c.summary.substring(0, 150)}...` : ''}\n\n`;
             });
           }
           
@@ -1830,70 +1808,34 @@ export class Orchestrator {
             break;
           }
           case 'get_glucose': {
-            const compParams = input as unknown as { limit?: number; search?: string; full_content?: boolean; content_type?: string };
+            const compParams = input as unknown as { limit?: number; search?: string; full_content?: boolean };
             const limit = Math.min(compParams.limit || 5, 10);
-            const contentType = compParams.content_type || 'all';
             
-            const resultParts: string[] = [];
-            
-            // Fetch articles (unless only dossiers requested)
-            if (contentType === 'all' || contentType === 'articles') {
-              let articles;
-              if (compParams.search) {
-                articles = await searchArticles(compParams.search, limit);
-              } else {
-                articles = await getLatestArticles(limit);
-              }
-              
-              if (articles.length > 0) {
-                if (compParams.full_content && articles.length > 0) {
-                  // Return full article content
-                  const a = articles[0];
-                  const date = new Date(a.published_at).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-                  resultParts.push(`📰 **${a.title_fr || a.title}**\n(${a.source_name || 'Source inconnue'} — ${date})\n\n${a.summary_gemma || 'Résumé non disponible'}\n🔗 ${a.url}`);
-                } else {
-                  const formatted = articles.map((a, i) => {
-                    const date = new Date(a.published_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short' });
-                    const title = a.title_fr || a.title;
-                    const summary = a.summary_gemma ? `\n   ${a.summary_gemma.substring(0, 150)}${a.summary_gemma.length > 150 ? '...' : ''}` : '';
-                    return `${i + 1}. ${title} (${a.source_name || '?'}) — ${date}${summary}`;
-                  }).join('\n');
-                  resultParts.push(`📰 **${articles.length} articles récents:**\n${formatted}`);
-                }
-              }
-            }
-            
-            // Fetch dossiers/comparisons (unless only articles requested)
-            if (contentType === 'all' || contentType === 'dossiers') {
-              let comparisons;
-              if (compParams.search) {
-                comparisons = await searchComparisons(compParams.search, limit);
-              } else {
-                comparisons = await getLatestComparisons(limit);
-              }
-              
-              if (comparisons.length > 0) {
-                if (compParams.full_content && comparisons.length > 0 && contentType !== 'all') {
-                  const c = comparisons[0];
-                  const date = new Date(c.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-                  resultParts.push(`📊 **${c.title}**\n(${c.sources_count} sources, ${c.countries_count} pays — ${date})\n\n${c.content || c.summary || 'Contenu non disponible'}`);
-                } else {
-                  const formatted = comparisons.map((c, i) => {
-                    const date = new Date(c.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short' });
-                    const summary = c.summary ? `\n   ${c.summary.substring(0, 150)}${c.summary.length > 150 ? '...' : ''}` : '';
-                    return `${i + 1}. ${c.title} (${c.sources_count} sources, ${c.countries_count} pays) — ${date}${summary}`;
-                  }).join('\n');
-                  resultParts.push(`📊 **${comparisons.length} dossiers approfondis:**\n${formatted}`);
-                }
-              }
-            }
-            
-            if (resultParts.length === 0) {
-              results.push({ name: tool.name, result: 'Aucun contenu trouvé sur Glucose pour cette recherche.' });
+            let comparisons;
+            if (compParams.search) {
+              comparisons = await searchComparisons(compParams.search, limit);
             } else {
+              comparisons = await getLatestComparisons(limit);
+            }
+            
+            if (comparisons.length === 0) {
+              results.push({ name: tool.name, result: 'Aucune analyse trouvée sur Glucose pour cette recherche.' });
+            } else if (compParams.full_content) {
+              const c = comparisons[0];
+              const date = new Date(c.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
               results.push({ 
                 name: tool.name, 
-                result: resultParts.join('\n\n---\n\n') + '\n\n[Source: glucose.press]'
+                result: `📊 **${c.title}**\n(${c.sources_count} sources de ${c.countries_count} pays — ${date})\n\n${c.content || c.summary || 'Contenu non disponible'}\n\n[Source: glucose.press — Analyse comparative multi-sources]`
+              });
+            } else {
+              const formatted = comparisons.map((c, i) => {
+                const date = new Date(c.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short' });
+                const summary = c.summary ? `\n   ${c.summary.substring(0, 150)}${c.summary.length > 150 ? '...' : ''}` : '';
+                return `${i + 1}. ${c.title} (${c.sources_count} sources, ${c.countries_count} pays) — ${date}${summary}`;
+              }).join('\n\n');
+              results.push({ 
+                name: tool.name, 
+                result: `${comparisons.length} analyses comparatives depuis glucose.press:\n\n${formatted}\n\n[Source: glucose.press]`
               });
             }
             break;
