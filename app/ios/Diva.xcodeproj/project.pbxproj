@@ -18,6 +18,7 @@
 		E71D2BC9AA4498F758BD4A05 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FA7798298C31251B5C4689C5 /* PrivacyInfo.xcprivacy */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		F1A2B3C4D5E6789012345683 /* DivaWidgetBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6789012345682 /* DivaWidgetBridge.m */; };
+		E1A2B3C4D5E6F70812345685 /* MascotImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E6F70812345684 /* MascotImage.swift */; };
 		F1E2D3C4B5A6789012345679 /* DivaIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6789012345678 /* DivaIntents.swift */; };
 /* End PBXBuildFile section */
 
@@ -416,7 +417,7 @@
 				CODE_SIGN_ENTITLEMENTS = Diva/Diva.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 39;
+				CURRENT_PROJECT_VERSION = 40;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -456,7 +457,7 @@
 				CODE_SIGN_ENTITLEMENTS = Diva/Diva.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 39;
+				CURRENT_PROJECT_VERSION = 40;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				INFOPLIST_FILE = Diva/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -487,7 +488,7 @@
 				CODE_SIGN_ENTITLEMENTS = DivaWidget/DivaWidget.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 39;
+				CURRENT_PROJECT_VERSION = 40;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				INFOPLIST_FILE = DivaWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -632,7 +633,7 @@
 				CODE_SIGN_ENTITLEMENTS = DivaWidget/DivaWidget.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 39;
+				CURRENT_PROJECT_VERSION = 40;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"DEBUG=1",
