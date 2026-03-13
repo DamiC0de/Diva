@@ -26,6 +26,9 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
   const theme = useTheme();
   const isDark = theme.statusBar === 'light';
   
+  // Press feedback
+  const pressScale = useRef(new Animated.Value(1)).current;
+  
   // Core animations
   const scale = useRef(new Animated.Value(1)).current;
   const scaleX = useRef(new Animated.Value(1)).current; // Squash & stretch
@@ -148,50 +151,52 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
 
     switch (state) {
       case 'idle': {
-        // Set initial values to avoid jumps
+        // Set initial values
         scale.setValue(1);
+        scaleX.setValue(1);
+        scaleY.setValue(1);
         translateY.setValue(0);
+        sway.setValue(0);
         glowOpacity.setValue(0.4);
         glowScale.setValue(1);
         
-        // Smooth breathing cycle: neutral → up → neutral → down → neutral
-        const breathe = Animated.loop(
+        // Smooth floating — like levitating in space
+        const float = Animated.loop(
           Animated.sequence([
-            // Float up
+            // Float up with slight stretch
             Animated.parallel([
-              Animated.timing(scale, { toValue: 1.06, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: -10, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(glowOpacity, { toValue: 0.55, duration: 1500, useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: -10, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(scaleY, { toValue: 1.03, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(scaleX, { toValue: 0.98, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(glowOpacity, { toValue: 0.55, duration: 2000, useNativeDriver: true }),
             ]),
-            // Return to center
+            // Float down with slight squash
             Animated.parallel([
-              Animated.timing(scale, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(glowOpacity, { toValue: 0.4, duration: 1500, useNativeDriver: true }),
-            ]),
-            // Float down
-            Animated.parallel([
-              Animated.timing(scale, { toValue: 0.96, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: 8, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(glowOpacity, { toValue: 0.3, duration: 1500, useNativeDriver: true }),
-            ]),
-            // Return to center (ready to loop)
-            Animated.parallel([
-              Animated.timing(scale, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(glowOpacity, { toValue: 0.4, duration: 1500, useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: 6, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(scaleY, { toValue: 0.98, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(scaleX, { toValue: 1.02, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(glowOpacity, { toValue: 0.35, duration: 2000, useNativeDriver: true }),
             ]),
           ])
         );
         
+        // Gentle idle sway — slow, dreamy
+        const idleSway = Animated.loop(
+          Animated.sequence([
+            Animated.timing(sway, { toValue: 0.4, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+            Animated.timing(sway, { toValue: -0.4, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          ])
+        );
+        
+        // Glow breath
         const glowPulse = Animated.loop(
           Animated.sequence([
-            Animated.timing(glowScale, { toValue: 1.25, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+            Animated.timing(glowScale, { toValue: 1.2, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
             Animated.timing(glowScale, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
           ])
         );
         
-        animRef.current = Animated.parallel([breathe, glowPulse]);
+        animRef.current = Animated.parallel([float, idleSway, glowPulse]);
         animRef.current.start();
         break;
       }
@@ -426,8 +431,34 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
     outputRange: ['-6deg', '0deg', '6deg'],
   });
 
+  // Press feedback — satisfying spring effect
+  const handlePressIn = () => {
+    Animated.spring(pressScale, {
+      toValue: 0.92,
+      damping: 15,
+      stiffness: 400,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(pressScale, {
+      toValue: 1,
+      damping: 8,
+      stiffness: 300,
+      useNativeDriver: true,
+    }).start();
+    onPressOut?.();
+  };
+
   return (
-    <Pressable onPress={onPress} onLongPress={onLongPress} onPressOut={onPressOut} style={styles.container}>
+    <Pressable 
+      onPress={onPress} 
+      onLongPress={onLongPress} 
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut} 
+      style={styles.container}
+    >
       {/* Ripple rings */}
       {(state === 'listening' || state === 'speaking') && (
         <>
@@ -464,6 +495,9 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         </>
       )}
       
+      {/* Press feedback wrapper — everything inside scales on press */}
+      <Animated.View style={[styles.pressWrapper, { transform: [{ scale: pressScale }] }]}>
+
       {/* Soft radial glow behind the sphere — SVG gradient, no solid disc */}
       <Animated.View
         style={[
@@ -488,7 +522,7 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
               { scaleY },
               { translateY },
               { translateX: shakeX },
-              { rotate: state === 'speaking' ? swayInterp : (state === 'listening' ? tiltInterp : rotateInterp) },
+              { rotate: (state === 'speaking' || state === 'idle') ? swayInterp : (state === 'listening' ? tiltInterp : rotateInterp) },
             ],
           },
         ]}
@@ -532,6 +566,8 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
           </Animated.View>
         )}
       </Animated.View>
+      
+      </Animated.View>{/* /Press feedback wrapper */}
     </Pressable>
   );
 }
@@ -554,6 +590,12 @@ const styles = StyleSheet.create({
     height: RING_BASE_SIZE,
     borderRadius: RING_BASE_SIZE / 2,
     borderWidth: 1.5,
+  },
+  pressWrapper: {
+    width: ORB_SIZE * 1.6,
+    height: ORB_SIZE * 1.6,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   orbWrapper: {
     width: ORB_SIZE,
