@@ -111,7 +111,8 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
 
   // Ripple ring animation (for listening/speaking)
   const createRippleAnimation = () => {
-    const rippleDuration = state === 'listening' ? 1500 : 1000;
+    const rippleDuration = state === 'listening' ? 1500 : 1800;
+    const maxScale = state === 'speaking' ? 2.5 : 1.8;
     
     return Animated.loop(
       Animated.stagger(rippleDuration / 3, [
@@ -119,9 +120,9 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         Animated.parallel([
           Animated.sequence([
             Animated.timing(ring1Scale, { toValue: 1, duration: 0, useNativeDriver: true }),
-            Animated.timing(ring1Opacity, { toValue: 0.6, duration: 100, useNativeDriver: true }),
+            Animated.timing(ring1Opacity, { toValue: 0.7, duration: 150, useNativeDriver: true }),
             Animated.parallel([
-              Animated.timing(ring1Scale, { toValue: 1.8, duration: rippleDuration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+              Animated.timing(ring1Scale, { toValue: maxScale, duration: rippleDuration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
               Animated.timing(ring1Opacity, { toValue: 0, duration: rippleDuration, useNativeDriver: true }),
             ]),
           ]),
@@ -130,9 +131,9 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         Animated.parallel([
           Animated.sequence([
             Animated.timing(ring2Scale, { toValue: 1, duration: 0, useNativeDriver: true }),
-            Animated.timing(ring2Opacity, { toValue: 0.5, duration: 100, useNativeDriver: true }),
+            Animated.timing(ring2Opacity, { toValue: 0.6, duration: 150, useNativeDriver: true }),
             Animated.parallel([
-              Animated.timing(ring2Scale, { toValue: 1.8, duration: rippleDuration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+              Animated.timing(ring2Scale, { toValue: maxScale, duration: rippleDuration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
               Animated.timing(ring2Opacity, { toValue: 0, duration: rippleDuration, useNativeDriver: true }),
             ]),
           ]),
@@ -141,9 +142,9 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         Animated.parallel([
           Animated.sequence([
             Animated.timing(ring3Scale, { toValue: 1, duration: 0, useNativeDriver: true }),
-            Animated.timing(ring3Opacity, { toValue: 0.4, duration: 100, useNativeDriver: true }),
+            Animated.timing(ring3Opacity, { toValue: 0.5, duration: 150, useNativeDriver: true }),
             Animated.parallel([
-              Animated.timing(ring3Scale, { toValue: 1.8, duration: rippleDuration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+              Animated.timing(ring3Scale, { toValue: maxScale, duration: rippleDuration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
               Animated.timing(ring3Opacity, { toValue: 0, duration: rippleDuration, useNativeDriver: true }),
             ]),
           ]),
@@ -641,7 +642,7 @@ const styles = StyleSheet.create({
     width: RING_BASE_SIZE,
     height: RING_BASE_SIZE,
     borderRadius: RING_BASE_SIZE / 2,
-    borderWidth: 1.5,
+    borderWidth: 2.5,
   },
   pressWrapper: {
     width: ORB_SIZE * 1.6,
