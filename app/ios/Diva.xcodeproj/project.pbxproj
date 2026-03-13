@@ -15,10 +15,10 @@
 		B83B1890B0994C38913F5F69 /* DivaWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F77FF344CB4081AF57C08A /* DivaWidget.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		D1E2F3A4B5C6789012345681 /* DivaWidgetBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6789012345680 /* DivaWidgetBridge.swift */; };
+		E1A2B3C4D5E6F70812345685 /* MascotImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E6F70812345684 /* MascotImage.swift */; };
 		E71D2BC9AA4498F758BD4A05 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FA7798298C31251B5C4689C5 /* PrivacyInfo.xcprivacy */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		F1A2B3C4D5E6789012345683 /* DivaWidgetBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D6789012345682 /* DivaWidgetBridge.m */; };
-		E1A2B3C4D5E6F70812345685 /* MascotImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E6F70812345684 /* MascotImage.swift */; };
 		F1E2D3C4B5A6789012345679 /* DivaIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6789012345678 /* DivaIntents.swift */; };
 /* End PBXBuildFile section */
 
@@ -53,7 +53,6 @@
 		28F77FF344CB4081AF57C08A /* DivaWidget.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = DivaWidget.swift; path = DivaWidget/DivaWidget.swift; sourceTree = "<group>"; };
 		3BBAACDF79C7B08B61C63AF3 /* Pods-Diva.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Diva.debug.xcconfig"; path = "Target Support Files/Pods-Diva/Pods-Diva.debug.xcconfig"; sourceTree = "<group>"; };
 		7F5B53A5D567BC02368409F8 /* libPods-Diva.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Diva.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		E1A2B3C4D5E6F70812345684 /* MascotImage.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = MascotImage.swift; path = DivaWidget/MascotImage.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6789012345678 /* DivaIntents.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = DivaIntents.swift; path = DivaWidget/DivaIntents.swift; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = Diva/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
@@ -61,6 +60,7 @@
 		C292E53C855BDFBFE0C1D705 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Diva/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		D641583A1E2AC04C77B92BE0 /* Pods-Diva.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Diva.release.xcconfig"; path = "Target Support Files/Pods-Diva/Pods-Diva.release.xcconfig"; sourceTree = "<group>"; };
 		E1A2B3C4D5E6F70812345681 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = DivaWidget/Assets.xcassets; sourceTree = "<group>"; };
+		E1A2B3C4D5E6F70812345684 /* MascotImage.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = MascotImage.swift; path = DivaWidget/MascotImage.swift; sourceTree = "<group>"; };
 		E1F2A3B4C5D6789012345682 /* DivaWidgetBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = DivaWidgetBridge.m; path = Diva/DivaWidgetBridge.m; sourceTree = "<group>"; };
 		EAFFBECEFAC04167AFFF1F3C /* DivaWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = undefined; name = DivaWidget.appex; path = DivaWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
@@ -417,7 +417,7 @@
 				CODE_SIGN_ENTITLEMENTS = Diva/Diva.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 40;
+				CURRENT_PROJECT_VERSION = 41;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -457,7 +457,7 @@
 				CODE_SIGN_ENTITLEMENTS = Diva/Diva.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 40;
+				CURRENT_PROJECT_VERSION = 41;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				INFOPLIST_FILE = Diva/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -488,7 +488,7 @@
 				CODE_SIGN_ENTITLEMENTS = DivaWidget/DivaWidget.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 40;
+				CURRENT_PROJECT_VERSION = 41;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				INFOPLIST_FILE = DivaWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -633,7 +633,7 @@
 				CODE_SIGN_ENTITLEMENTS = DivaWidget/DivaWidget.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 40;
+				CURRENT_PROJECT_VERSION = 41;
 				DEVELOPMENT_TEAM = PSD3D686QB;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"DEBUG=1",

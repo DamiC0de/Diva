@@ -1,9 +1,11 @@
 /**
- * OrbView — Expressive mascot with advanced animations
+ * OrbView — Premium mascot orb with glassmorphism & expressive animations
  * 2026 Design: Living mascot that listens and speaks
  */
 import React, { useEffect, useRef, useMemo } from 'react';
-import { StyleSheet, Animated, Pressable, Easing, Image } from 'react-native';
+import { StyleSheet, Animated, Pressable, Easing, Image, View } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../constants/theme';
 
 export type OrbState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
@@ -16,21 +18,28 @@ interface OrbViewProps {
   onPressOut?: () => void;
 }
 
-const MASCOT_SIZE = 140;
-const RING_BASE_SIZE = 180;
+const MASCOT_SIZE = 120;
+const ORB_SIZE = 180;
+const OUTER_GLOW_SIZE = 240;
 
 export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOut }: OrbViewProps) {
   const theme = useTheme();
+  const isDark = theme.statusBar === 'light';
   
   // Core animations
   const scale = useRef(new Animated.Value(1)).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const rotate = useRef(new Animated.Value(0)).current;
-  const tilt = useRef(new Animated.Value(0)).current; // For "listening" lean
+  const tilt = useRef(new Animated.Value(0)).current;
   
-  // Glow animations
-  const glowOpacity = useRef(new Animated.Value(0.3)).current;
-  const glowScale = useRef(new Animated.Value(1)).current;
+  // Orb glass animations
+  const orbGlowOpacity = useRef(new Animated.Value(0.4)).current;
+  const orbGlowScale = useRef(new Animated.Value(1)).current;
+  const outerGlowOpacity = useRef(new Animated.Value(0.15)).current;
+  const outerGlowScale = useRef(new Animated.Value(1)).current;
+  
+  // Inner gradient rotation
+  const gradientRotate = useRef(new Animated.Value(0)).current;
   
   // Ring animations (3 concentric rings)
   const ring1Scale = useRef(new Animated.Value(1)).current;
@@ -43,79 +52,143 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
   // Shake for error
   const shakeX = useRef(new Animated.Value(0)).current;
   
+  // Mouth animation (speaking)
+  const mouthOpen = useRef(new Animated.Value(0)).current;
+  const mouthOpacity = useRef(new Animated.Value(0)).current;
+  
+  // Particle float (decorative dots)
+  const particle1Y = useRef(new Animated.Value(0)).current;
+  const particle1Opacity = useRef(new Animated.Value(0)).current;
+  const particle2Y = useRef(new Animated.Value(0)).current;
+  const particle2Opacity = useRef(new Animated.Value(0)).current;
+  const particle3Y = useRef(new Animated.Value(0)).current;
+  const particle3Opacity = useRef(new Animated.Value(0)).current;
+  
   const animRef = useRef<Animated.CompositeAnimation | null>(null);
-
-  // Debug: log state changes
-  useEffect(() => {
-    console.log('[OrbView] State changed to:', state);
-  }, [state]);
+  const mouthAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+  const particleAnimRef = useRef<Animated.CompositeAnimation | null>(null);
 
   // State-based colors
   const stateColors = useMemo(() => ({
-    idle: { glow: theme.indigo, ring: theme.indigoLight },
-    listening: { glow: theme.cyan, ring: '#7DD3E8' },
-    processing: { glow: theme.indigoLight, ring: theme.cyan },
-    speaking: { glow: theme.violet, ring: theme.indigo },
-    error: { glow: theme.error, ring: '#FF6B6B' },
+    idle: { 
+      glow: theme.indigo, 
+      ring: theme.indigoLight,
+      gradient: [theme.cyan + '40', theme.indigo + '60', theme.violet + '40'] as [string, string, string],
+    },
+    listening: { 
+      glow: theme.cyan, 
+      ring: '#7DD3E8',
+      gradient: [theme.cyan + '70', '#7DD3E8' + '50', theme.indigo + '40'] as [string, string, string],
+    },
+    processing: { 
+      glow: theme.indigoLight, 
+      ring: theme.cyan,
+      gradient: [theme.indigoLight + '50', theme.indigo + '60', theme.violet + '50'] as [string, string, string],
+    },
+    speaking: { 
+      glow: theme.violet, 
+      ring: theme.indigo,
+      gradient: [theme.cyan + '50', theme.violet + '70', theme.indigo + '50'] as [string, string, string],
+    },
+    error: { 
+      glow: theme.error, 
+      ring: '#FF6B6B',
+      gradient: [theme.error + '40', '#FF6B6B' + '50', theme.error + '40'] as [string, string, string],
+    },
   }), [theme]);
 
   const colors = stateColors[state];
 
-  // Reset all animations with smooth transition
+  // Reset all animations
   const resetAnimations = () => {
     animRef.current?.stop();
-    [scale, translateY, rotate, tilt, glowOpacity, glowScale, 
-     ring1Scale, ring1Opacity, ring2Scale, ring2Opacity, ring3Scale, ring3Opacity, shakeX]
+    mouthAnimRef.current?.stop();
+    particleAnimRef.current?.stop();
+    [scale, translateY, rotate, tilt, orbGlowOpacity, orbGlowScale,
+     outerGlowOpacity, outerGlowScale, gradientRotate,
+     ring1Scale, ring1Opacity, ring2Scale, ring2Opacity, ring3Scale, ring3Opacity, 
+     shakeX, mouthOpen, mouthOpacity,
+     particle1Y, particle1Opacity, particle2Y, particle2Opacity, particle3Y, particle3Opacity]
       .forEach(anim => anim.stopAnimation());
     
-    // Reset ALL values to neutral
     scale.setValue(1);
     translateY.setValue(0);
     shakeX.setValue(0);
     rotate.setValue(0);
     tilt.setValue(0);
-    glowScale.setValue(1);
-    glowOpacity.setValue(0.4);
+    orbGlowScale.setValue(1);
+    orbGlowOpacity.setValue(0.4);
+    outerGlowScale.setValue(1);
+    outerGlowOpacity.setValue(0.15);
     ring1Opacity.setValue(0);
     ring2Opacity.setValue(0);
     ring3Opacity.setValue(0);
+    mouthOpen.setValue(0);
+    mouthOpacity.setValue(0);
   };
 
-  // Ripple ring animation (for listening/speaking)
+  // Floating particle animation (always active)
+  useEffect(() => {
+    const createParticleLoop = (yAnim: Animated.Value, opacityAnim: Animated.Value, delay: number) => {
+      return Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.parallel([
+            Animated.timing(opacityAnim, { toValue: 0.6, duration: 800, useNativeDriver: true }),
+            Animated.timing(yAnim, { toValue: -60, duration: 2500, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(opacityAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+            Animated.timing(yAnim, { toValue: -80, duration: 600, useNativeDriver: true }),
+          ]),
+          Animated.timing(yAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
+        ])
+      );
+    };
+
+    particleAnimRef.current = Animated.parallel([
+      createParticleLoop(particle1Y, particle1Opacity, 0),
+      createParticleLoop(particle2Y, particle2Opacity, 1000),
+      createParticleLoop(particle3Y, particle3Opacity, 2000),
+    ]);
+    particleAnimRef.current.start();
+
+    return () => { particleAnimRef.current?.stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Ripple ring animation
   const createRippleAnimation = () => {
     const rippleDuration = state === 'listening' ? 1500 : 1000;
     
     return Animated.loop(
       Animated.stagger(rippleDuration / 3, [
-        // Ring 1
         Animated.parallel([
           Animated.sequence([
             Animated.timing(ring1Scale, { toValue: 1, duration: 0, useNativeDriver: true }),
-            Animated.timing(ring1Opacity, { toValue: 0.6, duration: 100, useNativeDriver: true }),
+            Animated.timing(ring1Opacity, { toValue: 0.5, duration: 100, useNativeDriver: true }),
             Animated.parallel([
-              Animated.timing(ring1Scale, { toValue: 1.8, duration: rippleDuration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+              Animated.timing(ring1Scale, { toValue: 2, duration: rippleDuration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
               Animated.timing(ring1Opacity, { toValue: 0, duration: rippleDuration, useNativeDriver: true }),
             ]),
           ]),
         ]),
-        // Ring 2
         Animated.parallel([
           Animated.sequence([
             Animated.timing(ring2Scale, { toValue: 1, duration: 0, useNativeDriver: true }),
-            Animated.timing(ring2Opacity, { toValue: 0.5, duration: 100, useNativeDriver: true }),
+            Animated.timing(ring2Opacity, { toValue: 0.4, duration: 100, useNativeDriver: true }),
             Animated.parallel([
-              Animated.timing(ring2Scale, { toValue: 1.8, duration: rippleDuration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+              Animated.timing(ring2Scale, { toValue: 2, duration: rippleDuration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
               Animated.timing(ring2Opacity, { toValue: 0, duration: rippleDuration, useNativeDriver: true }),
             ]),
           ]),
         ]),
-        // Ring 3
         Animated.parallel([
           Animated.sequence([
             Animated.timing(ring3Scale, { toValue: 1, duration: 0, useNativeDriver: true }),
-            Animated.timing(ring3Opacity, { toValue: 0.4, duration: 100, useNativeDriver: true }),
+            Animated.timing(ring3Opacity, { toValue: 0.3, duration: 100, useNativeDriver: true }),
             Animated.parallel([
-              Animated.timing(ring3Scale, { toValue: 1.8, duration: rippleDuration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+              Animated.timing(ring3Scale, { toValue: 2, duration: rippleDuration, easing: Easing.out(Easing.ease), useNativeDriver: true }),
               Animated.timing(ring3Opacity, { toValue: 0, duration: rippleDuration, useNativeDriver: true }),
             ]),
           ]),
@@ -129,46 +202,45 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
 
     switch (state) {
       case 'idle': {
-        // Set initial values to avoid jumps
         scale.setValue(1);
         translateY.setValue(0);
-        glowOpacity.setValue(0.4);
-        glowScale.setValue(1);
+        orbGlowOpacity.setValue(0.4);
+        orbGlowScale.setValue(1);
+        outerGlowOpacity.setValue(0.15);
         
-        // Smooth breathing cycle: neutral → up → neutral → down → neutral
         const breathe = Animated.loop(
           Animated.sequence([
-            // Float up
             Animated.parallel([
-              Animated.timing(scale, { toValue: 1.06, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: -10, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(glowOpacity, { toValue: 0.55, duration: 1500, useNativeDriver: true }),
+              Animated.timing(scale, { toValue: 1.05, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: -8, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(orbGlowOpacity, { toValue: 0.6, duration: 2000, useNativeDriver: true }),
+              Animated.timing(outerGlowOpacity, { toValue: 0.25, duration: 2000, useNativeDriver: true }),
             ]),
-            // Return to center
             Animated.parallel([
-              Animated.timing(scale, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(glowOpacity, { toValue: 0.4, duration: 1500, useNativeDriver: true }),
+              Animated.timing(scale, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(orbGlowOpacity, { toValue: 0.4, duration: 2000, useNativeDriver: true }),
+              Animated.timing(outerGlowOpacity, { toValue: 0.15, duration: 2000, useNativeDriver: true }),
             ]),
-            // Float down
             Animated.parallel([
-              Animated.timing(scale, { toValue: 0.96, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: 8, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(glowOpacity, { toValue: 0.3, duration: 1500, useNativeDriver: true }),
+              Animated.timing(scale, { toValue: 0.97, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: 6, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(orbGlowOpacity, { toValue: 0.3, duration: 2000, useNativeDriver: true }),
+              Animated.timing(outerGlowOpacity, { toValue: 0.1, duration: 2000, useNativeDriver: true }),
             ]),
-            // Return to center (ready to loop)
             Animated.parallel([
-              Animated.timing(scale, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(glowOpacity, { toValue: 0.4, duration: 1500, useNativeDriver: true }),
+              Animated.timing(scale, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(orbGlowOpacity, { toValue: 0.4, duration: 2000, useNativeDriver: true }),
+              Animated.timing(outerGlowOpacity, { toValue: 0.15, duration: 2000, useNativeDriver: true }),
             ]),
           ])
         );
         
         const glowPulse = Animated.loop(
           Animated.sequence([
-            Animated.timing(glowScale, { toValue: 1.25, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-            Animated.timing(glowScale, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+            Animated.timing(orbGlowScale, { toValue: 1.15, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+            Animated.timing(orbGlowScale, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
           ])
         );
         
@@ -178,61 +250,49 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
       }
       
       case 'listening': {
-        // Strong tilt + ripple rings + visible pulse
         Animated.timing(tilt, { toValue: 1, duration: 300, useNativeDriver: true }).start();
-        Animated.timing(glowOpacity, { toValue: 0.8, duration: 200, useNativeDriver: true }).start();
-        Animated.timing(glowScale, { toValue: 1.4, duration: 300, useNativeDriver: true }).start();
+        Animated.timing(orbGlowOpacity, { toValue: 0.8, duration: 200, useNativeDriver: true }).start();
+        Animated.timing(orbGlowScale, { toValue: 1.3, duration: 300, useNativeDriver: true }).start();
+        Animated.timing(outerGlowOpacity, { toValue: 0.4, duration: 300, useNativeDriver: true }).start();
+        Animated.timing(outerGlowScale, { toValue: 1.2, duration: 300, useNativeDriver: true }).start();
         
         const attentivePulse = Animated.loop(
           Animated.sequence([
             Animated.parallel([
-              Animated.timing(scale, { toValue: 1.12, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: -8, duration: 400, useNativeDriver: true }),
+              Animated.timing(scale, { toValue: 1.1, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: -6, duration: 400, useNativeDriver: true }),
             ]),
             Animated.parallel([
-              Animated.timing(scale, { toValue: 0.95, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: 8, duration: 400, useNativeDriver: true }),
+              Animated.timing(scale, { toValue: 0.96, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: 6, duration: 400, useNativeDriver: true }),
             ]),
           ])
         );
         
         const ripple = createRippleAnimation();
-        
         animRef.current = Animated.parallel([attentivePulse, ripple]);
         animRef.current.start();
         break;
       }
       
       case 'processing': {
-        console.log('[OrbView] Starting PROCESSING animation');
-        // Set initial values to avoid jumps
         scale.setValue(1);
         translateY.setValue(0);
-        glowScale.setValue(1.2);
-        glowOpacity.setValue(0.7);
+        orbGlowScale.setValue(1.2);
+        orbGlowOpacity.setValue(0.7);
+        outerGlowOpacity.setValue(0.3);
         
-        // Simple breathing animation - no sudden jumps
         const breathe = Animated.loop(
           Animated.sequence([
-            Animated.timing(scale, { 
-              toValue: 1.1, 
-              duration: 800, 
-              easing: Easing.bezier(0.4, 0, 0.2, 1), // Material ease
-              useNativeDriver: true 
-            }),
-            Animated.timing(scale, { 
-              toValue: 1, 
-              duration: 800, 
-              easing: Easing.bezier(0.4, 0, 0.2, 1),
-              useNativeDriver: true 
-            }),
+            Animated.timing(scale, { toValue: 1.08, duration: 800, easing: Easing.bezier(0.4, 0, 0.2, 1), useNativeDriver: true }),
+            Animated.timing(scale, { toValue: 1, duration: 800, easing: Easing.bezier(0.4, 0, 0.2, 1), useNativeDriver: true }),
           ])
         );
         
         const glowBreath = Animated.loop(
           Animated.sequence([
-            Animated.timing(glowScale, { toValue: 1.4, duration: 800, easing: Easing.bezier(0.4, 0, 0.2, 1), useNativeDriver: true }),
-            Animated.timing(glowScale, { toValue: 1.1, duration: 800, easing: Easing.bezier(0.4, 0, 0.2, 1), useNativeDriver: true }),
+            Animated.timing(orbGlowScale, { toValue: 1.4, duration: 800, easing: Easing.bezier(0.4, 0, 0.2, 1), useNativeDriver: true }),
+            Animated.timing(orbGlowScale, { toValue: 1.1, duration: 800, easing: Easing.bezier(0.4, 0, 0.2, 1), useNativeDriver: true }),
           ])
         );
         
@@ -242,37 +302,49 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
       }
       
       case 'speaking': {
-        console.log('[OrbView] Starting SPEAKING animation');
-        // Set initial values
         scale.setValue(1);
         translateY.setValue(0);
-        glowOpacity.setValue(1);
-        glowScale.setValue(1.6);
+        orbGlowOpacity.setValue(1);
+        orbGlowScale.setValue(1.4);
+        outerGlowOpacity.setValue(0.5);
+        outerGlowScale.setValue(1.3);
         
-        // Energetic "talking" bounce - like the mascot is speaking with enthusiasm
+        // Mouth appears
+        Animated.timing(mouthOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+        
+        // Mouth talking animation
+        mouthAnimRef.current = Animated.loop(
+          Animated.sequence([
+            Animated.timing(mouthOpen, { toValue: 1, duration: 120, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.3, duration: 80, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.8, duration: 100, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.1, duration: 90, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0.6, duration: 110, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+            Animated.timing(mouthOpen, { toValue: 0, duration: 100, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+            Animated.delay(80),
+          ])
+        );
+        mouthAnimRef.current.start();
+        
+        // Energetic bounce
         const talkBounce = Animated.loop(
           Animated.sequence([
-            // Quick bounce up
             Animated.parallel([
-              Animated.timing(scale, { toValue: 1.18, duration: 120, easing: Easing.out(Easing.back(1.5)), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: -18, duration: 120, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+              Animated.timing(scale, { toValue: 1.15, duration: 120, easing: Easing.out(Easing.back(1.5)), useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: -14, duration: 120, easing: Easing.out(Easing.ease), useNativeDriver: true }),
             ]),
-            // Squash down
             Animated.parallel([
-              Animated.timing(scale, { toValue: 0.92, duration: 100, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: 8, duration: 100, useNativeDriver: true }),
+              Animated.timing(scale, { toValue: 0.94, duration: 100, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: 6, duration: 100, useNativeDriver: true }),
             ]),
-            // Settle
             Animated.parallel([
-              Animated.timing(scale, { toValue: 1.05, duration: 80, useNativeDriver: true }),
+              Animated.timing(scale, { toValue: 1.04, duration: 80, useNativeDriver: true }),
               Animated.timing(translateY, { toValue: 0, duration: 80, useNativeDriver: true }),
             ]),
-            // Small bounce
             Animated.parallel([
-              Animated.timing(scale, { toValue: 1.1, duration: 100, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-              Animated.timing(translateY, { toValue: -8, duration: 100, useNativeDriver: true }),
+              Animated.timing(scale, { toValue: 1.08, duration: 100, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+              Animated.timing(translateY, { toValue: -6, duration: 100, useNativeDriver: true }),
             ]),
-            // Return
             Animated.parallel([
               Animated.timing(scale, { toValue: 1, duration: 100, useNativeDriver: true }),
               Animated.timing(translateY, { toValue: 0, duration: 100, useNativeDriver: true }),
@@ -280,26 +352,23 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
           ])
         );
         
-        // Intense glow pulsing
         const glowPulse = Animated.loop(
           Animated.sequence([
-            Animated.timing(glowScale, { toValue: 1.9, duration: 250, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-            Animated.timing(glowOpacity, { toValue: 0.7, duration: 150, useNativeDriver: true }),
-            Animated.timing(glowScale, { toValue: 1.4, duration: 250, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-            Animated.timing(glowOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+            Animated.timing(orbGlowScale, { toValue: 1.6, duration: 250, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+            Animated.timing(outerGlowOpacity, { toValue: 0.3, duration: 150, useNativeDriver: true }),
+            Animated.timing(orbGlowScale, { toValue: 1.3, duration: 250, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+            Animated.timing(outerGlowOpacity, { toValue: 0.6, duration: 150, useNativeDriver: true }),
           ])
         );
         
         const ripple = createRippleAnimation();
-        
         animRef.current = Animated.parallel([talkBounce, glowPulse, ripple]);
         animRef.current.start();
         break;
       }
       
       case 'error': {
-        // Shake + red glow
-        Animated.timing(glowOpacity, { toValue: 0.8, duration: 100, useNativeDriver: true }).start();
+        Animated.timing(orbGlowOpacity, { toValue: 0.8, duration: 100, useNativeDriver: true }).start();
         
         const shake = Animated.sequence([
           Animated.timing(shakeX, { toValue: 15, duration: 50, useNativeDriver: true }),
@@ -313,8 +382,8 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         
         const errorPulse = Animated.loop(
           Animated.sequence([
-            Animated.timing(glowScale, { toValue: 1.2, duration: 400, useNativeDriver: true }),
-            Animated.timing(glowScale, { toValue: 1, duration: 400, useNativeDriver: true }),
+            Animated.timing(orbGlowScale, { toValue: 1.2, duration: 400, useNativeDriver: true }),
+            Animated.timing(orbGlowScale, { toValue: 1, duration: 400, useNativeDriver: true }),
           ])
         );
         
@@ -324,8 +393,8 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
       }
     }
     
-    return () => { animRef.current?.stop(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Animation refs are stable, only re-run on state change
+    return () => { animRef.current?.stop(); mouthAnimRef.current?.stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
   // Audio-reactive boost
@@ -339,13 +408,13 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
         useNativeDriver: true 
       }).start();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Animation ref is stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioLevel, state]);
 
   // Interpolations
   const tiltInterp = tilt.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '15deg'], // Visible tilt when listening
+    outputRange: ['0deg', '12deg'],
   });
   
   const rotateInterp = rotate.interpolate({
@@ -355,58 +424,44 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
 
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} onPressOut={onPressOut} style={styles.container}>
+      
+      {/* Outer atmospheric glow */}
+      <Animated.View
+        style={[
+          styles.outerGlow,
+          {
+            backgroundColor: colors.glow,
+            transform: [{ scale: outerGlowScale }],
+            opacity: outerGlowOpacity,
+          },
+        ]}
+      />
+      
       {/* Ripple rings */}
       {(state === 'listening' || state === 'speaking') && (
         <>
-          <Animated.View
-            style={[
-              styles.ring,
-              {
-                borderColor: colors.ring,
-                transform: [{ scale: ring1Scale }],
-                opacity: ring1Opacity,
-              },
-            ]}
-          />
-          <Animated.View
-            style={[
-              styles.ring,
-              {
-                borderColor: colors.ring,
-                transform: [{ scale: ring2Scale }],
-                opacity: ring2Opacity,
-              },
-            ]}
-          />
-          <Animated.View
-            style={[
-              styles.ring,
-              {
-                borderColor: colors.ring,
-                transform: [{ scale: ring3Scale }],
-                opacity: ring3Opacity,
-              },
-            ]}
-          />
+          <Animated.View style={[styles.ring, { borderColor: colors.ring, transform: [{ scale: ring1Scale }], opacity: ring1Opacity }]} />
+          <Animated.View style={[styles.ring, { borderColor: colors.ring, transform: [{ scale: ring2Scale }], opacity: ring2Opacity }]} />
+          <Animated.View style={[styles.ring, { borderColor: colors.ring, transform: [{ scale: ring3Scale }], opacity: ring3Opacity }]} />
         </>
       )}
       
-      {/* Main glow */}
+      {/* Main glow behind orb */}
       <Animated.View
         style={[
-          styles.glow,
+          styles.mainGlow,
           {
             backgroundColor: colors.glow,
-            transform: [{ scale: glowScale }],
-            opacity: glowOpacity,
+            transform: [{ scale: orbGlowScale }],
+            opacity: orbGlowOpacity,
           },
         ]}
       />
 
-      {/* Mascot with expressive animations */}
+      {/* Glass orb container */}
       <Animated.View
         style={[
-          styles.mascotContainer,
+          styles.orbContainer,
           {
             transform: [
               { scale },
@@ -417,44 +472,181 @@ export function OrbView({ state, audioLevel = 0, onPress, onLongPress, onPressOu
           },
         ]}
       >
-        <Image
-          source={require('../../assets/images/diva-logo.png')}
-          style={styles.mascot}
-          resizeMode="contain"
-        />
+        {/* Glass border ring */}
+        <View style={[styles.glassBorder, { borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.3)' }]}>
+          {/* Inner gradient fill */}
+          <LinearGradient
+            colors={colors.gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.innerGradient}
+          />
+          
+          {/* Frosted glass overlay */}
+          <BlurView
+            intensity={isDark ? 40 : 25}
+            tint={isDark ? 'dark' : 'light'}
+            style={styles.blurOverlay}
+          />
+          
+          {/* Glass highlight (top-left shine) */}
+          <View style={styles.glassHighlight} />
+          
+          {/* Mascot */}
+          <Image
+            source={require('../../assets/images/diva-logo.png')}
+            style={styles.mascot}
+            resizeMode="contain"
+          />
+          
+          {/* Animated mouth — appears when speaking */}
+          {state === 'speaking' && (
+            <Animated.View style={[styles.mouthContainer, { opacity: mouthOpacity }]}>
+              <Animated.View
+                style={[
+                  styles.mouth,
+                  {
+                    transform: [{
+                      scaleY: mouthOpen.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.2, 1],
+                      }),
+                    }],
+                  },
+                ]}
+              />
+            </Animated.View>
+          )}
+        </View>
       </Animated.View>
+      
+      {/* Floating particles */}
+      <Animated.View style={[
+        styles.particle, styles.particle1,
+        { backgroundColor: theme.cyan, opacity: particle1Opacity, transform: [{ translateY: particle1Y }] }
+      ]} />
+      <Animated.View style={[
+        styles.particle, styles.particle2,
+        { backgroundColor: theme.indigoLight, opacity: particle2Opacity, transform: [{ translateY: particle2Y }] }
+      ]} />
+      <Animated.View style={[
+        styles.particle, styles.particle3,
+        { backgroundColor: theme.violet, opacity: particle3Opacity, transform: [{ translateY: particle3Y }] }
+      ]} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: { 
-    width: 300, 
-    height: 300, 
+    width: 320, 
+    height: 320, 
     justifyContent: 'center', 
     alignItems: 'center',
   },
-  glow: { 
+  
+  // Outer atmospheric glow
+  outerGlow: {
     position: 'absolute',
-    width: 200, 
-    height: 200, 
-    borderRadius: 100,
+    width: OUTER_GLOW_SIZE,
+    height: OUTER_GLOW_SIZE,
+    borderRadius: OUTER_GLOW_SIZE / 2,
   },
+  
+  // Main glow
+  mainGlow: { 
+    position: 'absolute',
+    width: ORB_SIZE + 40, 
+    height: ORB_SIZE + 40, 
+    borderRadius: (ORB_SIZE + 40) / 2,
+  },
+  
+  // Ripple rings
   ring: {
     position: 'absolute',
-    width: RING_BASE_SIZE,
-    height: RING_BASE_SIZE,
-    borderRadius: RING_BASE_SIZE / 2,
-    borderWidth: 2,
+    width: ORB_SIZE,
+    height: ORB_SIZE,
+    borderRadius: ORB_SIZE / 2,
+    borderWidth: 1.5,
   },
-  mascotContainer: {
-    width: MASCOT_SIZE,
-    height: MASCOT_SIZE,
+  
+  // Glass orb
+  orbContainer: {
+    width: ORB_SIZE,
+    height: ORB_SIZE,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  glassBorder: {
+    width: ORB_SIZE,
+    height: ORB_SIZE,
+    borderRadius: ORB_SIZE / 2,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  innerGradient: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: ORB_SIZE / 2,
+  },
+  blurOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: ORB_SIZE / 2,
+  },
+  glassHighlight: {
+    position: 'absolute',
+    top: 12,
+    left: 20,
+    width: ORB_SIZE * 0.45,
+    height: ORB_SIZE * 0.25,
+    borderRadius: ORB_SIZE * 0.2,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    transform: [{ rotate: '-20deg' }],
+  },
+  
+  // Mascot
   mascot: {
     width: MASCOT_SIZE,
     height: MASCOT_SIZE,
+  },
+  
+  // Mouth
+  mouthContainer: {
+    position: 'absolute',
+    bottom: ORB_SIZE * 0.3,
+    alignSelf: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mouth: {
+    width: 14,
+    height: 10,
+    borderRadius: 7,
+    backgroundColor: 'rgba(90, 50, 140, 0.65)',
+  },
+  
+  // Floating particles
+  particle: {
+    position: 'absolute',
+    borderRadius: 10,
+  },
+  particle1: {
+    width: 5,
+    height: 5,
+    right: 60,
+    bottom: 100,
+  },
+  particle2: {
+    width: 4,
+    height: 4,
+    left: 55,
+    bottom: 80,
+  },
+  particle3: {
+    width: 3,
+    height: 3,
+    right: 80,
+    bottom: 130,
   },
 });

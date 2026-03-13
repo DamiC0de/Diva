@@ -8,6 +8,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import type { FastifyBaseLogger } from 'fastify';
 import type { WebSocket } from 'ws';
 import { LLMService } from './llm.js';
@@ -19,7 +21,7 @@ import * as TelegramUser from './telegramUser.js';
 import { InboundMessageSchema } from '../schemas/ws-messages.js';
 import { checkRateLimit, getRateLimitConfig } from '../lib/rateLimiter.js';
 import { loadHistory, saveMessage, pruneHistory } from '../lib/conversationHistory.js';
-import { getLatestComparisons, searchComparisons } from '../lib/glucose.js';
+import { getLatestArticles, searchArticles, getLatestComparisons, searchComparisons } from '../lib/glucose.js';
 
 // Request states
 export enum RequestState {
@@ -485,13 +487,13 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
   },
   {
     name: 'get_glucose',
-    description: "OBLIGATOIRE quand l'utilisateur mentionne 'glucose', 'glucose.press', ou demande des articles/news/dossiers. Ce tool accède directement à la base de données glucose.press (site d'analyses comparatives de médias). Utilise-le À LA PLACE de web_search pour tout ce qui concerne glucose. Retourne les synthèses multi-sources.",
+    description: "OBLIGATOIRE quand l'utilisateur mentionne 'glucose', 'glucose.press', ou demande des articles/news/dossiers/flashes/actu. Ce tool accède à la base de données glucose.press. Il peut chercher dans les ARTICLES (actualités individuelles), les DOSSIERS APPROFONDIS (analyses comparatives multi-sources), ou les DEUX. Utilise-le À LA PLACE de web_search pour tout ce qui concerne glucose.",
     input_schema: {
       type: 'object' as const,
       properties: {
         limit: {
           type: 'number',
-          description: "Nombre d'analyses à retourner (défaut 5, max 10)",
+          description: "Nombre de résultats à retourner (défaut 5, max 10)",
         },
         search: {
           type: 'string',
@@ -499,7 +501,12 @@ Si tu ne connais pas le scheme exact, utilise une URL https:// qui ouvrira Safar
         },
         full_content: {
           type: 'boolean',
-          description: "Si true, retourne le contenu COMPLET du premier article trouvé. Utilise quand l'utilisateur veut LIRE un article en entier.",
+          description: "Si true, retourne le contenu COMPLET du premier résultat trouvé.",
+        },
+        content_type: {
+          type: 'string',
+          enum: ['all', 'articles', 'dossiers'],
+          description: "Type de contenu: 'all' (articles + dossiers, défaut), 'articles' (actualités/flashes), 'dossiers' (analyses approfondies).",
         },
       },
     },
@@ -733,6 +740,9 @@ export class Orchestrator {
   private userHistory: Map<string, { messages: { role: 'user' | 'assistant'; content: string }[]; lastActivity: number }> = new Map(); // in-memory cache, persisted to Supabase
   private historyLoadedUsers = new Set<string>(); // Track which users have had history loaded
   private clientMemory = new Map<string, string>(); // userId → client-provided memory context
+  // Contextual filler audios — categorized for appropriate responses
+  private fillerCategories: Map<string, string[]> = new Map(); // category → base64[]
+  private lastFillerIndex = new Map<string, string>(); // userId → last filler key (avoid repeats)
 
   constructor(
     logger: FastifyBaseLogger,
@@ -743,6 +753,98 @@ export class Orchestrator {
     this.llm = new LLMService(logger);
     this.redis = redis;
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.loadFillerAudios();
+  }
+
+  /**
+   * Load pre-generated contextual filler phrases into memory
+   */
+  private loadFillerAudios(): void {
+    try {
+      const baseDir = join(import.meta.dirname ?? __dirname, '../../assets/fillers');
+      const categories = ['emotional', 'factual', 'action', 'casual'];
+      let total = 0;
+      
+      for (const cat of categories) {
+        const catDir = join(baseDir, cat);
+        try {
+          const files = readdirSync(catDir).filter(f => f.endsWith('.mp3')).sort();
+          const audios: string[] = [];
+          for (const file of files) {
+            const buffer = readFileSync(join(catDir, file));
+            if (buffer.length > 0) {
+              audios.push(buffer.toString('base64'));
+            }
+          }
+          if (audios.length > 0) {
+            this.fillerCategories.set(cat, audios);
+            total += audios.length;
+          }
+        } catch { /* category dir missing — skip */ }
+      }
+      
+      // Fallback: load flat fillers as 'casual' if no categories found
+      if (total === 0) {
+        const files = readdirSync(baseDir).filter(f => f.endsWith('.mp3')).sort();
+        const audios: string[] = [];
+        for (const file of files) {
+          const buffer = readFileSync(join(baseDir, file));
+          if (buffer.length > 0) audios.push(buffer.toString('base64'));
+        }
+        if (audios.length > 0) this.fillerCategories.set('casual', audios);
+        total = audios.length;
+      }
+      
+      this.logger.info({ msg: 'Loaded filler audios', total, categories: [...this.fillerCategories.keys()] });
+    } catch (e) {
+      this.logger.warn({ msg: 'Could not load filler audios', error: String(e) });
+    }
+  }
+
+  /**
+   * Classify user message tone (instant — regex only, no LLM)
+   */
+  private classifyTone(text: string): 'emotional' | 'factual' | 'action' | 'casual' {
+    const lower = text.toLowerCase();
+    
+    // Emotional: distress, sadness, crisis, personal struggles
+    if (/\b(suicid|mourir|mort|déprim|dépression|pleurer|pleure|triste|seul|solitude|anxié|panique|peur|mal\s+(de\s+vivre|à\s+vivre)|désespoir|ça\s+va\s+pas|j'en\s+peux\s+plus|aide[rz]?\s*moi|besoin\s+d'aide|difficile|douleur|souffr|inqui[eè]t|perdu|crise|stress[ée]?)\b/i.test(lower)) {
+      return 'emotional';
+    }
+    
+    // Factual: questions, search, info requests
+    if (/\b(c'est quoi|qu'est[- ]ce que|comment|pourquoi|combien|quand|qui est|explique|raconte|résume|cherche|trouve|article|info|nouvelle|actu|news|glucose|wikipedia)\b/i.test(lower) ||
+        lower.includes('?')) {
+      return 'factual';
+    }
+    
+    // Action: commands, tasks
+    if (/\b(mets|mettez|lance|ouvre|envoie|rappelle|crée|fais|active|désactive|change|configure|ajoute|supprime|éteins|allume)\b/i.test(lower)) {
+      return 'action';
+    }
+    
+    return 'casual';
+  }
+
+  /**
+   * Pick a contextual filler audio based on message tone
+   */
+  private pickFiller(userId: string, text: string): string | null {
+    const tone = this.classifyTone(text);
+    const audios = this.fillerCategories.get(tone) || this.fillerCategories.get('casual');
+    if (!audios || audios.length === 0) return null;
+    
+    const lastKey = this.lastFillerIndex.get(userId) ?? '';
+    let idx: number;
+    let key: string;
+    do {
+      idx = Math.floor(Math.random() * audios.length);
+      key = `${tone}-${idx}`;
+    } while (key === lastKey && audios.length > 1);
+    
+    this.lastFillerIndex.set(userId, key);
+    this.logger.debug({ msg: 'Filler selected', tone, idx });
+    return audios[idx];
   }
 
   /**
@@ -1073,8 +1175,16 @@ export class Orchestrator {
     const metrics = { prep: 0, search: 0, llm: 0, tools: 0, tts: 0, total: 0 };
 
     try {
-      // 1. LLM
+      // 1. LLM — set THINKING state FIRST (so client sets responseComplete=false)
       this.setState(socket, request, RequestState.THINKING);
+
+      // 0. Send instant filler audio while we process (after THINKING state)
+      // Don't change state to STREAMING_AUDIO — orb stays in 'processing' mode
+      // so when filler finishes, client won't transition to idle
+      const fillerAudio = this.pickFiller(request.userId, text);
+      if (fillerAudio) {
+        this.sendEvent(socket, { type: 'tts_audio', audio: fillerAudio, requestId: request.id });
+      }
 
       // Get/create session history for this WS connection
       if (!this.sessionHistory.has(socket)) {
@@ -1201,32 +1311,47 @@ export class Orchestrator {
       if (isGlucoseQuery) {
         this.logger.info({ msg: 'Force glucose tool', text: text.substring(0, 50) });
         
-        // Extract search term if any
-        const searchMatch = text.match(/(?:sur|about|concernant|iran|trump|ukraine|climat|pétrole|oil|israel|russia|chine|china)[\s:]*(\w+)/i);
-        const searchTerm = searchMatch?.[1] || undefined;
+        // Extract search term from the query
+        const cleanText = text.replace(/glucose\.?press?/gi, '').trim();
+        const searchTerm = cleanText.length > 2 ? cleanText.split(/\s+/).slice(0, 3).join(' ') : undefined;
         
         // Check if user wants full content
         const wantsFull = /(lis|lire|entier|complet|intégral|détail)/i.test(text);
         
-        let comparisons;
-        if (searchTerm) {
-          comparisons = await searchComparisons(searchTerm, 5);
-        } else {
-          comparisons = await getLatestComparisons(5);
-        }
+        // Search BOTH articles AND comparisons
+        const [articles, comparisons] = await Promise.all([
+          searchTerm ? searchArticles(searchTerm, 5) : getLatestArticles(5),
+          searchTerm ? searchComparisons(searchTerm, 3) : getLatestComparisons(3),
+        ]);
         
-        if (comparisons.length > 0) {
-          let glucoseContext: string;
-          if (wantsFull && comparisons.length > 0) {
-            const article = comparisons[0];
-            const date = new Date(article.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-            glucoseContext = `[DONNÉES GLUCOSE.PRESS - Article complet]\n📰 ${article.title}\n(${article.sources_count} sources de ${article.countries_count} pays — ${date})\n\n${article.content || article.summary || 'Contenu non disponible'}`;
-          } else {
-            const formatted = comparisons.map((c, i) => {
+        const hasContent = articles.length > 0 || comparisons.length > 0;
+        
+        if (hasContent) {
+          let glucoseContext = '[DONNÉES GLUCOSE.PRESS]\n\n';
+          
+          // Articles section
+          if (articles.length > 0) {
+            if (wantsFull) {
+              const a = articles[0];
+              const date = new Date(a.published_at).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+              glucoseContext += `📰 ARTICLE: ${a.title_fr || a.title}\n(${a.source_name || 'Source'} — ${date})\n${a.summary_gemma || ''}\n🔗 ${a.url}\n\n`;
+            } else {
+              glucoseContext += `📰 ARTICLES (${articles.length}):\n`;
+              articles.forEach((a, i) => {
+                const date = new Date(a.published_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short' });
+                glucoseContext += `${i + 1}. ${a.title_fr || a.title} (${a.source_name || '?'}) — ${date}\n`;
+              });
+              glucoseContext += '\n';
+            }
+          }
+          
+          // Dossiers section
+          if (comparisons.length > 0) {
+            glucoseContext += `📊 DOSSIERS APPROFONDIS (${comparisons.length}):\n`;
+            comparisons.forEach((c, i) => {
               const date = new Date(c.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short' });
-              return `${i + 1}. ${c.title} (${c.sources_count} sources, ${c.countries_count} pays) — ${date}${c.summary ? `\n   ${c.summary.substring(0, 150)}...` : ''}`;
-            }).join('\n\n');
-            glucoseContext = `[DONNÉES GLUCOSE.PRESS - ${comparisons.length} analyses récentes]\n\n${formatted}`;
+              glucoseContext += `${i + 1}. ${c.title} (${c.sources_count} sources, ${c.countries_count} pays) — ${date}${c.summary ? `\n   ${c.summary.substring(0, 150)}...` : ''}\n`;
+            });
           }
           
           // Send to LLM with forced glucose context
@@ -1265,8 +1390,8 @@ export class Orchestrator {
         }
       }
 
-      if (mightNeedTools) {
-        // Use regular chat with tools
+      // First LLM call — with tools (non-streaming, since we need to detect tool_use)
+      {
         let llmResult = await this.llm.chat({
           userId: request.userId,
           message: preSearchContext ? `${text}${preSearchContext}` : text,
@@ -1280,6 +1405,7 @@ export class Orchestrator {
         if (request.cancelled) return;
 
         // Handle tool use
+        let toolContext = '';
         if (llmResult.toolUse && llmResult.toolUse.length > 0) {
           const tTools = Date.now();
           const toolResults = await this.executeTools(llmResult.toolUse, request.userId, socket);
@@ -1287,77 +1413,76 @@ export class Orchestrator {
             const openUrl = (tool as unknown as Record<string, unknown>)._openUrl as string | undefined;
             if (openUrl) this.sendEvent(socket, { type: 'open_url', url: openUrl, requestId: request.id } as ServerEvent);
           }
-
-          const toolContext = toolResults.map(r => `[${r.name}]: ${r.result}`).join('\n');
-          llmResult = await this.llm.chat({
-            userId: request.userId,
-            message: toolContext,
-            history: [
-              ...sessionHistory.slice(0, -1),
-              { role: 'user' as const, content: text },
-              { role: 'assistant' as const, content: llmResult.text || '[tool]' },
-            ],
-            memories,
-            userSettings,
-          });
+          toolContext = toolResults.map(r => `[${r.name}]: ${r.result}`).join('\n');
           metrics.tools = Date.now() - tTools;
           if (request.cancelled) return;
         }
 
-        fullText = this.cleanForTTS(llmResult.text);
-      } else {
-        // Use streaming LLM → TTS for faster response
-        let sentenceBuffer = '';
-        
-        const llmStream = this.llm.chatStream({
-          userId: request.userId,
-          message: preSearchContext ? `${text}${preSearchContext}` : text,
-          history: sessionHistory.slice(0, -1),
-          memories,
-          userSettings,
-        });
+        // If tools were used OR no text yet → stream the final response
+        // If no tools and we already have text → use it directly
+        if (toolContext || !llmResult.text) {
+          // Stream the response (with or without tool context) for fast TTS
+          let sentenceBuffer = '';
+          const streamHistory = toolContext
+            ? [
+                ...sessionHistory.slice(0, -1),
+                { role: 'user' as const, content: text },
+                { role: 'assistant' as const, content: llmResult.text || '[tool]' },
+              ]
+            : sessionHistory.slice(0, -1);
+          const streamMessage = toolContext || (preSearchContext ? `${text}${preSearchContext}` : text);
 
-        for await (const token of llmStream) {
-          if (request.cancelled) break;
-          
-          sentenceBuffer += token;
-          fullText += token;
-          
-          // Check for sentence boundary
-          const sentenceMatch = sentenceBuffer.match(/^(.*?[.!?])\s*(.*)$/s);
-          if (sentenceMatch) {
-            const completeSentence = sentenceMatch[1].trim();
-            sentenceBuffer = sentenceMatch[2];
-            
-            if (completeSentence) {
-              const cleanSentence = this.cleanForTTS(completeSentence);
-              if (cleanSentence) {
-                streamSentence(cleanSentence, sentenceIndex++);
+          const llmStream = this.llm.chatStream({
+            userId: request.userId,
+            message: streamMessage,
+            history: streamHistory,
+            memories,
+            userSettings,
+          });
+
+          for await (const token of llmStream) {
+            if (request.cancelled) break;
+            sentenceBuffer += token;
+            fullText += token;
+
+            // Send text_response progressively for UI
+            this.sendEvent(socket, { type: 'text_response', text: fullText, requestId: request.id, isPartial: true } as any);
+
+            // Check for sentence boundary → start TTS immediately
+            const sentenceMatch = sentenceBuffer.match(/^(.*?[.!?])\s*(.*)$/s);
+            if (sentenceMatch) {
+              const completeSentence = sentenceMatch[1].trim();
+              sentenceBuffer = sentenceMatch[2];
+              if (completeSentence) {
+                const cleanSentence = this.cleanForTTS(completeSentence);
+                if (cleanSentence) {
+                  streamSentence(cleanSentence, sentenceIndex++);
+                }
               }
             }
           }
-        }
-        
-        // Handle any remaining text
-        if (sentenceBuffer.trim()) {
-          const cleanSentence = this.cleanForTTS(sentenceBuffer.trim());
-          if (cleanSentence) {
-            streamSentence(cleanSentence, sentenceIndex++);
+
+          // Flush remaining buffer
+          if (sentenceBuffer.trim()) {
+            const cleanSentence = this.cleanForTTS(sentenceBuffer.trim());
+            if (cleanSentence) {
+              streamSentence(cleanSentence, sentenceIndex++);
+            }
+          }
+        } else {
+          // Simple response (no tools, text already available) — still stream TTS
+          fullText = this.cleanForTTS(llmResult.text);
+          // Split into sentences for parallel TTS
+          const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
+          for (const sentence of sentences) {
+            const clean = sentence.trim();
+            if (clean) streamSentence(clean, sentenceIndex++);
           }
         }
-        
-        metrics.llm = Date.now() - tLlm;
-        fullText = this.cleanForTTS(fullText);
       }
 
-      // If we didn't stream TTS yet (tool path), do it now
+      // Wait for TTS to complete
       const tTts = Date.now();
-      if (sentenceIndex === 0 && fullText.trim()) {
-        const sentences = fullText.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 0);
-        for (const sentence of sentences) {
-          streamSentence(sentence, sentenceIndex++);
-        }
-      }
       
       // Wait for all TTS to complete
       if (ttsPromises.length > 0) {
@@ -1705,47 +1830,72 @@ export class Orchestrator {
             break;
           }
           case 'get_glucose': {
-            const compParams = input as unknown as { limit?: number; search?: string; full_content?: boolean };
+            const compParams = input as unknown as { limit?: number; search?: string; full_content?: boolean; content_type?: string };
             const limit = Math.min(compParams.limit || 5, 10);
+            const contentType = compParams.content_type || 'all';
             
-            let comparisons;
-            if (compParams.search) {
-              comparisons = await searchComparisons(compParams.search, limit);
+            const resultParts: string[] = [];
+            
+            // Fetch articles (unless only dossiers requested)
+            if (contentType === 'all' || contentType === 'articles') {
+              let articles;
+              if (compParams.search) {
+                articles = await searchArticles(compParams.search, limit);
+              } else {
+                articles = await getLatestArticles(limit);
+              }
+              
+              if (articles.length > 0) {
+                if (compParams.full_content && articles.length > 0) {
+                  // Return full article content
+                  const a = articles[0];
+                  const date = new Date(a.published_at).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+                  resultParts.push(`📰 **${a.title_fr || a.title}**\n(${a.source_name || 'Source inconnue'} — ${date})\n\n${a.summary_gemma || 'Résumé non disponible'}\n🔗 ${a.url}`);
+                } else {
+                  const formatted = articles.map((a, i) => {
+                    const date = new Date(a.published_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short' });
+                    const title = a.title_fr || a.title;
+                    const summary = a.summary_gemma ? `\n   ${a.summary_gemma.substring(0, 150)}${a.summary_gemma.length > 150 ? '...' : ''}` : '';
+                    return `${i + 1}. ${title} (${a.source_name || '?'}) — ${date}${summary}`;
+                  }).join('\n');
+                  resultParts.push(`📰 **${articles.length} articles récents:**\n${formatted}`);
+                }
+              }
+            }
+            
+            // Fetch dossiers/comparisons (unless only articles requested)
+            if (contentType === 'all' || contentType === 'dossiers') {
+              let comparisons;
+              if (compParams.search) {
+                comparisons = await searchComparisons(compParams.search, limit);
+              } else {
+                comparisons = await getLatestComparisons(limit);
+              }
+              
+              if (comparisons.length > 0) {
+                if (compParams.full_content && comparisons.length > 0 && contentType !== 'all') {
+                  const c = comparisons[0];
+                  const date = new Date(c.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+                  resultParts.push(`📊 **${c.title}**\n(${c.sources_count} sources, ${c.countries_count} pays — ${date})\n\n${c.content || c.summary || 'Contenu non disponible'}`);
+                } else {
+                  const formatted = comparisons.map((c, i) => {
+                    const date = new Date(c.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short' });
+                    const summary = c.summary ? `\n   ${c.summary.substring(0, 150)}${c.summary.length > 150 ? '...' : ''}` : '';
+                    return `${i + 1}. ${c.title} (${c.sources_count} sources, ${c.countries_count} pays) — ${date}${summary}`;
+                  }).join('\n');
+                  resultParts.push(`📊 **${comparisons.length} dossiers approfondis:**\n${formatted}`);
+                }
+              }
+            }
+            
+            if (resultParts.length === 0) {
+              results.push({ name: tool.name, result: 'Aucun contenu trouvé sur Glucose pour cette recherche.' });
             } else {
-              comparisons = await getLatestComparisons(limit);
-            }
-            
-            if (comparisons.length === 0) {
-              results.push({ name: tool.name, result: 'Aucun dossier approfondi trouvé sur Glucose.' });
-              break;
-            }
-            
-            // If full_content requested, return the complete content of the first match
-            if (compParams.full_content && comparisons.length > 0) {
-              const article = comparisons[0];
-              const date = new Date(article.created_at).toLocaleString('fr-FR', { 
-                day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' 
-              });
-              const fullContent = article.content || article.summary || 'Contenu non disponible';
               results.push({ 
                 name: tool.name, 
-                result: `📰 **${article.title}**\n(${article.sources_count} sources de ${article.countries_count} pays — ${date})\n\n${fullContent}\n\n[Source: glucose.press — Analyse comparative multi-sources]` 
+                result: resultParts.join('\n\n---\n\n') + '\n\n[Source: glucose.press]'
               });
-              break;
             }
-            
-            const formatted = comparisons.map((c, i) => {
-              const date = new Date(c.created_at).toLocaleString('fr-FR', { 
-                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
-              });
-              const summary = c.summary ? `\n   Résumé: ${c.summary.substring(0, 200)}${c.summary.length > 200 ? '...' : ''}` : '';
-              return `${i + 1}. ${c.title} (${c.sources_count} sources, ${c.countries_count} pays) — ${date}${summary}`;
-            }).join('\n\n');
-            
-            results.push({ 
-              name: tool.name, 
-              result: `${comparisons.length} dossiers approfondis depuis glucose.press:\n\n${formatted}\n\n[Ces analyses comparatives croisent les perspectives de médias internationaux. Mentionne glucose.press !]` 
-            });
             break;
           }
           default:
