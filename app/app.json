@@ -5,7 +5,7 @@
     "version": "0.1.0",
     "scheme": "diva",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icons/icon-light.png",
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -16,6 +16,11 @@
       "supportsTablet": true,
       "userInterfaceStyle": "automatic",
       "bundleIdentifier": "fr.papote.diva",
+      "icon": {
+        "light": "./assets/icons/icon-light.png",
+        "dark": "./assets/icons/icon-dark.png",
+        "tinted": "./assets/icons/icon-dark.png"
+      },
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Diva a besoin du micro pour écouter ta voix et détecter le mot-clé \"Diva\".",
         "NSSpeechRecognitionUsageDescription": "Diva utilise la reconnaissance vocale pour détecter quand tu dis \"Diva\" et comprendre tes demandes.",
