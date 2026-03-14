@@ -180,7 +180,26 @@ export default function SettingsScreen() {
         try {
           await api.delete('/api/v1/memories');
           Alert.alert('✓', 'Souvenirs effacés');
-        } catch { Alert.alert('Erreur', 'Impossible d\'effacer'); }
+        } catch {
+          // HTTP blocked — use WebSocket
+          try {
+            const { data } = await supabase.auth.getSession();
+            const token = data.session?.access_token;
+            if (!token) return;
+            const wsUrl = API_BASE_URL.replace('http', 'ws');
+            const ws = new WebSocket(`${wsUrl}/ws?token=${token}`);
+            ws.onopen = () => ws.send(JSON.stringify({ type: 'delete_memories' }));
+            ws.onmessage = (event) => {
+              try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'memories_deleted') Alert.alert('✓', 'Souvenirs effacés');
+                if (msg.type === 'memories_error') Alert.alert('Erreur', 'Impossible d\'effacer');
+              } catch {}
+              ws.close();
+            };
+            setTimeout(() => ws.close(), 10000);
+          } catch { Alert.alert('Erreur', 'Impossible d\'effacer'); }
+        }
       }},
     ]);
   };
@@ -278,11 +297,35 @@ export default function SettingsScreen() {
             icon={<Brain size={iconSize} color={iconColor} />}
             onPress={async () => {
               try {
+                // Try HTTP first, fall back to WebSocket
                 const res = await api.get<{ memories?: { category: string; content: string }[] }>('/api/v1/memories');
                 const memories = res.data?.memories || [];
                 const items = memories.slice(0, 5).map((m) => `• ${m.content}`).join('\n');
                 Alert.alert(`${memories.length} souvenir(s)`, items || 'Aucun souvenir');
-              } catch { Alert.alert('Erreur', 'Impossible de charger'); }
+              } catch {
+                // HTTP blocked (ATS) — use WebSocket
+                try {
+                  const { data } = await supabase.auth.getSession();
+                  const token = data.session?.access_token;
+                  if (!token) { Alert.alert('Erreur', 'Non connecté'); return; }
+                  const wsUrl = API_BASE_URL.replace('http', 'ws');
+                  const ws = new WebSocket(`${wsUrl}/ws?token=${token}`);
+                  ws.onopen = () => ws.send(JSON.stringify({ type: 'get_memories' }));
+                  ws.onmessage = (event) => {
+                    try {
+                      const msg = JSON.parse(event.data);
+                      if (msg.type === 'memories') {
+                        const memories = msg.memories || [];
+                        const items = memories.slice(0, 5).map((m: { content: string }) => `• ${m.content}`).join('\n');
+                        Alert.alert(`${memories.length} souvenir(s)`, items || 'Aucun souvenir');
+                        ws.close();
+                      }
+                    } catch {}
+                  };
+                  ws.onerror = () => Alert.alert('Erreur', 'Impossible de charger');
+                  setTimeout(() => ws.close(), 10000);
+                } catch { Alert.alert('Erreur', 'Impossible de charger'); }
+              }
             }}
           />
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />

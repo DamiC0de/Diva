@@ -1004,6 +1004,15 @@ export class Orchestrator {
         // Save settings via WebSocket
         this.handleUpdateSettings(socket, userId, (message as any).settings).catch(e => this.logger.error({ msg: 'WS update_settings error', error: e }));
         break;
+
+      case 'get_memories':
+        // Memories via WebSocket (HTTP blocked by ATS on iOS)
+        this.handleGetMemories(socket, userId).catch(e => this.logger.error({ msg: 'WS get_memories error', error: e }));
+        break;
+
+      case 'delete_memories':
+        this.handleDeleteMemories(socket, userId).catch(e => this.logger.error({ msg: 'WS delete_memories error', error: e }));
+        break;
     }
   }
 
@@ -2098,6 +2107,36 @@ export class Orchestrator {
   }
 
   // --- Settings via WebSocket (bypass ATS) ---
+
+  private async handleGetMemories(socket: WebSocket, userId: string) {
+    try {
+      const { data, error } = await getSupabase()
+        .from('memories')
+        .select('id, category, content, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      socket.send(JSON.stringify({ type: 'memories', memories: data ?? [] }));
+    } catch (err) {
+      this.logger.error({ msg: 'WS: failed to get memories', error: err });
+      socket.send(JSON.stringify({ type: 'memories_error', error: 'Failed to load' }));
+    }
+  }
+
+  private async handleDeleteMemories(socket: WebSocket, userId: string) {
+    try {
+      await getSupabase()
+        .from('memories')
+        .delete()
+        .eq('user_id', userId);
+
+      socket.send(JSON.stringify({ type: 'memories_deleted' }));
+    } catch (err) {
+      this.logger.error({ msg: 'WS: failed to delete memories', error: err });
+      socket.send(JSON.stringify({ type: 'memories_error', error: 'Failed to delete' }));
+    }
+  }
 
   private async handleGetSettings(socket: WebSocket, userId: string) {
     try {
