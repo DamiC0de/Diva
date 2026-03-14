@@ -2,8 +2,8 @@
  * DIVA — Main Screen with Mascot Orb
  * 2026 Design: Dark-first, Lucide icons, mascot-centered
  */
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Text, Pressable } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, StyleSheet, Text, Pressable, Linking } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -75,6 +75,27 @@ export default function OrbScreen() {
     autoStart: settings.voice.wake_word_mode !== 'manual' && !!token,
     paused: orbState !== 'idle',
   });
+
+  // Widget deep link: auto-start listening when launched via diva:///?widget=true
+  const widgetHandled = useRef(false);
+  useEffect(() => {
+    if (!token || widgetHandled.current) return;
+
+    const handleUrl = (url: string | null) => {
+      if (url && url.includes('widget=true') && orbState === 'idle' && !widgetHandled.current) {
+        widgetHandled.current = true;
+        // Small delay to let WS connect
+        setTimeout(() => toggleSession(), 500);
+      }
+    };
+
+    // Check if app was launched via URL (cold start)
+    Linking.getInitialURL().then(handleUrl);
+
+    // Listen for URL while app is open (warm start)
+    const sub = Linking.addEventListener('url', (event) => handleUrl(event.url));
+    return () => sub.remove();
+  }, [token, orbState, toggleSession]);
 
   const isDark = theme.statusBar === 'light';
 
