@@ -16,6 +16,7 @@ interface ExtractedFact {
   category: 'preference' | 'fact' | 'person' | 'event' | 'health' | 'routine' | 'location' | 'relationship' | 'opinion' | 'goal';
   content: string;
   relevanceScore: number;
+  expiresInDays?: number | null; // null = permanent
 }
 
 interface Message {
@@ -29,6 +30,7 @@ Pour chaque fait, donne :
 - category: une parmi preference | fact | person | event | health | routine | location | relationship | opinion | goal
 - content: le fait en une phrase concise et claire
 - relevanceScore: entre 0.0 et 1.0 (importance pour comprendre l'utilisateur)
+- expiresInDays: nombre de jours avant expiration (null = permanent). Ex: "a mal à la tête" → 2, "est diabétique" → null, "a un rdv demain" → 3, "aime le jazz" → null
 
 Catégories :
 - preference : goûts, préférences ("aime le jazz", "préfère le thé vert")
@@ -152,6 +154,12 @@ export class MemoryExtractor {
             embedding: JSON.stringify(embedding),
             relevance_score: fact.relevanceScore,
           };
+          // Set expiration if temporary
+          if (fact.expiresInDays) {
+            const expiresAt = new Date();
+            expiresAt.setDate(expiresAt.getDate() + fact.expiresInDays);
+            insertData.expires_at = expiresAt.toISOString();
+          }
           const insertConvUuid = toUuidOrNull(conversationId);
           if (insertConvUuid) insertData.source_conversation_id = insertConvUuid;
 

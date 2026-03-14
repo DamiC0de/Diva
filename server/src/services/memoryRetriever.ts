@@ -51,11 +51,19 @@ export class MemoryRetriever {
 
       if (!data?.length) return [];
 
+      // Filter out expired memories
+      const validData = data.filter((row: { expires_at?: string | null }) => {
+        if (!row.expires_at) return true; // permanent
+        return new Date(row.expires_at) > new Date();
+      });
+
+      if (!validData.length) return [];
+
       // Re-rank with recency boost (80% similarity + 20% recency)
       const now = Date.now();
       const ONE_DAY = 86400000;
 
-      const scored: RetrievedMemory[] = data.map((row: { id: string; category: string; content: string; similarity: number; created_at: string }) => {
+      const scored: RetrievedMemory[] = validData.map((row: { id: string; category: string; content: string; similarity: number; created_at: string }) => {
         const ageMs = now - new Date(row.created_at).getTime();
         const ageDays = ageMs / ONE_DAY;
         // Recency boost: 1.0 for today, decays to 0 after ~30 days

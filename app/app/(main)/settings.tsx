@@ -295,38 +295,7 @@ export default function SettingsScreen() {
           <SettingRow
             label="Voir mes souvenirs"
             icon={<Brain size={iconSize} color={iconColor} />}
-            onPress={async () => {
-              try {
-                // Try HTTP first, fall back to WebSocket
-                const res = await api.get<{ memories?: { category: string; content: string }[] }>('/api/v1/memories');
-                const memories = res.data?.memories || [];
-                const items = memories.map((m: { content: string }) => `• ${m.content}`).join('\n');
-                Alert.alert(`${memories.length} souvenir(s)`, items || 'Aucun souvenir');
-              } catch {
-                // HTTP blocked (ATS) — use WebSocket
-                try {
-                  const { data } = await supabase.auth.getSession();
-                  const token = data.session?.access_token;
-                  if (!token) { Alert.alert('Erreur', 'Non connecté'); return; }
-                  const wsUrl = API_BASE_URL.replace('http', 'ws');
-                  const ws = new WebSocket(`${wsUrl}/ws?token=${token}`);
-                  ws.onopen = () => ws.send(JSON.stringify({ type: 'get_memories' }));
-                  ws.onmessage = (event) => {
-                    try {
-                      const msg = JSON.parse(event.data);
-                      if (msg.type === 'memories') {
-                        const memories = msg.memories || [];
-                        const items = memories.map((m: { content: string }) => `• ${m.content}`).join('\n');
-                        Alert.alert(`${memories.length} souvenir(s)`, items || 'Aucun souvenir');
-                        ws.close();
-                      }
-                    } catch {}
-                  };
-                  ws.onerror = () => Alert.alert('Erreur', 'Impossible de charger');
-                  setTimeout(() => ws.close(), 10000);
-                } catch { Alert.alert('Erreur', 'Impossible de charger'); }
-              }
-            }}
+            onPress={() => router.push('/memories')}
           />
           <View style={[styles.divider, { backgroundColor: theme.divider }]} />
           <SettingRow

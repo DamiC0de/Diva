@@ -24,6 +24,13 @@ export default function MainLayout() {
         }}
       />
       <Stack.Screen
+        name="memories"
+        options={{
+          presentation: 'modal',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="history"
         options={{
           presentation: 'modal',
