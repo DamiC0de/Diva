@@ -300,7 +300,7 @@ export default function SettingsScreen() {
                 // Try HTTP first, fall back to WebSocket
                 const res = await api.get<{ memories?: { category: string; content: string }[] }>('/api/v1/memories');
                 const memories = res.data?.memories || [];
-                const items = memories.slice(0, 5).map((m) => `• ${m.content}`).join('\n');
+                const items = memories.map((m: { content: string }) => `• ${m.content}`).join('\n');
                 Alert.alert(`${memories.length} souvenir(s)`, items || 'Aucun souvenir');
               } catch {
                 // HTTP blocked (ATS) — use WebSocket
@@ -316,7 +316,7 @@ export default function SettingsScreen() {
                       const msg = JSON.parse(event.data);
                       if (msg.type === 'memories') {
                         const memories = msg.memories || [];
-                        const items = memories.slice(0, 5).map((m: { content: string }) => `• ${m.content}`).join('\n');
+                        const items = memories.map((m: { content: string }) => `• ${m.content}`).join('\n');
                         Alert.alert(`${memories.length} souvenir(s)`, items || 'Aucun souvenir');
                         ws.close();
                       }

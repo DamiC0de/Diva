@@ -15,7 +15,7 @@ export async function memoriesRoutes(app: FastifyInstance) {
   app.get<{ Querystring: MemoryQuery }>('/api/v1/memories', {
     preHandler: [app.authenticate],
   }, async (request) => {
-    const { category, limit = 50, offset = 0 } = request.query;
+    const { category, limit = 1000, offset = 0 } = request.query;
     let query = db
       .from('memories')
       .select('id, category, content, relevance_score, remind_at, sent, created_at, updated_at')

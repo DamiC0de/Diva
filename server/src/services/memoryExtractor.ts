@@ -13,7 +13,7 @@ function toUuidOrNull(id: string): string | null {
 }
 
 interface ExtractedFact {
-  category: 'preference' | 'fact' | 'person' | 'event' | 'reminder';
+  category: 'preference' | 'fact' | 'person' | 'event' | 'health' | 'routine' | 'location' | 'relationship' | 'opinion' | 'goal';
   content: string;
   relevanceScore: number;
 }
@@ -23,19 +23,27 @@ interface Message {
   content: string;
 }
 
-const EXTRACTION_PROMPT = `Analyse cette conversation et extrais les faits importants à mémoriser sur l'utilisateur.
+const EXTRACTION_PROMPT = `Analyse cette conversation et extrais TOUS les faits importants à mémoriser sur l'utilisateur. Sois exhaustif — chaque détail personnel compte.
 
 Pour chaque fait, donne :
-- category: preference | fact | person | event
-- content: le fait en une phrase concise
-- relevanceScore: entre 0.0 et 1.0 (importance)
+- category: une parmi preference | fact | person | event | health | routine | location | relationship | opinion | goal
+- content: le fait en une phrase concise et claire
+- relevanceScore: entre 0.0 et 1.0 (importance pour comprendre l'utilisateur)
 
-Ne retiens QUE les informations personnelles durables (pas les questions ponctuelles).
-Exemples de ce qu'il faut retenir :
-- Préférences ("aime le jazz", "préfère le thé")
-- Faits ("habite à Lyon", "travaille chez Airbus")
-- Personnes ("Sophie est sa femme", "Marc est son collègue")
-- Événements ("va se marier en juin")
+Catégories :
+- preference : goûts, préférences ("aime le jazz", "préfère le thé vert")
+- fact : faits personnels ("travaille chez Airbus", "a 2 enfants")
+- person : personnes mentionnées ("Sophie est sa copine", "Marc est son collègue")
+- event : événements passés ou futurs ("va se marier en juin", "a eu un entretien lundi")
+- health : santé physique/mentale ("est diabétique", "prend du magnésium", "dort mal")
+- routine : habitudes régulières ("court le mardi matin", "commande des sushis le vendredi")
+- location : lieux importants ("habite à Lyon", "bureau à la Défense")
+- relationship : liens entre personnes ("Sophie et Marc sont en couple", "son frère vit au Canada")
+- opinion : avis, convictions ("pense que l'IA va tout changer", "n'aime pas la politique")
+- goal : objectifs, projets ("veut apprendre le piano", "prépare un marathon")
+
+Ne retiens QUE les informations personnelles durables (pas les questions ponctuelles comme "quelle heure est-il").
+Extrais le MAXIMUM de faits pertinents — mieux vaut trop que pas assez.
 
 Réponds UNIQUEMENT en JSON array. Si rien à retenir, réponds [].`;
 

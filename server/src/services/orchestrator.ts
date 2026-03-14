@@ -735,6 +735,8 @@ export class Orchestrator {
   private userHistory: Map<string, { messages: { role: 'user' | 'assistant'; content: string }[]; lastActivity: number }> = new Map(); // in-memory cache, persisted to Supabase
   private historyLoadedUsers = new Set<string>(); // Track which users have had history loaded
   private clientMemory = new Map<string, string>(); // userId → client-provided memory context
+  private interactionCount = new Map<string, number>(); // userId → count since last extraction
+  private readonly EXTRACT_EVERY_N = 5; // Extract memories every N user messages
   // Contextual filler audios — categorized for appropriate responses
   private fillerCategories: Map<string, string[]> = new Map(); // category → base64[]
   private lastFillerIndex = new Map<string, string>(); // userId → last filler key (avoid repeats)
@@ -1495,6 +1497,19 @@ export class Orchestrator {
 
       this.sendEvent(socket, { type: 'text_response', text: fullText, requestId: request.id, isPartial: false });
 
+      // MEM-001: Continuous memory extraction every N interactions
+      const count = (this.interactionCount.get(request.userId) || 0) + 1;
+      this.interactionCount.set(request.userId, count);
+      if (count >= this.EXTRACT_EVERY_N) {
+        this.interactionCount.set(request.userId, 0);
+        const histCopy = [...sessionHistory];
+        const convId = `ws-live-${Date.now()}`;
+        this.logger.info({ msg: '[MEMORY] Live extraction triggered', userId: request.userId, messageCount: histCopy.length });
+        this.extractMemories(request.userId, histCopy, convId)
+          .then(() => this.logger.info({ msg: '[MEMORY] Live extraction SUCCESS', userId: request.userId }))
+          .catch(err => this.logger.error({ msg: '[MEMORY] Live extraction FAILED', error: String(err) }));
+      }
+
       metrics.total = Date.now() - t0;
       this.logger.info({
         msg: 'Request completed',
@@ -2114,8 +2129,7 @@ export class Orchestrator {
         .from('memories')
         .select('id, category, content, created_at')
         .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .order('created_at', { ascending: false });
 
       socket.send(JSON.stringify({ type: 'memories', memories: data ?? [] }));
     } catch (err) {
