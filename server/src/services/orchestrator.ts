@@ -1235,8 +1235,32 @@ export class Orchestrator {
         this.getUserSettings(request.userId),
       ]);
 
-      // Merge server-side RAG memories with client-side persistent memory
-      const memories = [...serverMemories];
+      // Proactive memories (events, goals, routines from last 7 days) + relations
+      let proactiveMemories: string[] = [];
+      let relationStrings: string[] = [];
+      try {
+        const retriever = new MemoryRetriever(this.logger);
+        const [proactive, relations] = await Promise.all([
+          retriever.retrieveProactive(request.userId),
+          retriever.retrieveRelations(request.userId, 15),
+        ]);
+        if (proactive.length > 0) {
+          proactiveMemories = proactive.map(m => `[${m.category}] ${m.content}`);
+          this.logger.info({ msg: '[MEMORY] Proactive memories injected', count: proactive.length });
+        }
+        if (relations.length > 0) {
+          relationStrings = relations.map(r => `- ${r}`);
+          this.logger.info({ msg: '[MEMORY] Relations injected', count: relations.length });
+        }
+      } catch {}
+
+      // Merge server-side RAG memories with proactive + relations
+      const allMemoryStrings = [...serverMemories, ...proactiveMemories];
+      if (relationStrings.length > 0) {
+        allMemoryStrings.push(`[relations] Liens connus : ${relationStrings.join(', ')}`);
+      }
+      // Deduplicate
+      const memories = [...new Set(allMemoryStrings)];
       const clientMem = this.clientMemory.get(request.userId);
       if (clientMem) {
         memories.push(clientMem);

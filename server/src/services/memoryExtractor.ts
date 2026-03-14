@@ -19,6 +19,12 @@ interface ExtractedFact {
   expiresInDays?: number | null; // null = permanent
 }
 
+interface ExtractedRelation {
+  subject: string;   // e.g. "Sophie"
+  relation: string;  // e.g. "est la copine de"
+  object: string;    // e.g. "l'utilisateur"
+}
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -173,10 +179,97 @@ export class MemoryExtractor {
         }
       }
 
+      // Extract relationships (non-blocking, in background)
+      this.extractRelations(userId, conversationText).catch(err => 
+        this.logger.error({ msg: '[MEMORY] Relation extraction failed', error: String(err) })
+      );
+
       return facts;
     } catch (error) {
       this.logger.error({ msg: '[MEMORY-DEBUG] extract() CRASHED', error: String(error), stack: (error as Error)?.stack });
       return [];
+    }
+  }
+
+  private async extractRelations(userId: string, conversationText: string): Promise<void> {
+    const RELATION_PROMPT = `Analyse cette conversation et extrais les RELATIONS entre entités mentionnées par l'utilisateur.
+
+Pour chaque relation, donne :
+- subject: l'entité source (nom de personne, lieu, etc.)
+- relation: le type de lien (ex: "est la copine de", "travaille à", "habite à", "est le frère de")
+- object: l'entité cible
+
+Exemples :
+- {"subject": "Sophie", "relation": "est la copine de", "object": "l'utilisateur"}
+- {"subject": "l'utilisateur", "relation": "travaille à", "object": "Airbus"}
+- {"subject": "Marc", "relation": "est le frère de", "object": "Sophie"}
+
+Ne retiens que les relations clairement exprimées. Réponds UNIQUEMENT en JSON array. Si aucune relation, réponds [].`;
+
+    try {
+      const result = await this.llm.chat({
+        userId,
+        message: `${RELATION_PROMPT}\n\nConversation:\n${conversationText}`,
+        history: [],
+      });
+
+      const jsonMatch = result.text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) return;
+
+      const relations = JSON.parse(jsonMatch[0]) as ExtractedRelation[];
+      if (!relations.length) return;
+
+      const db = getSupabase();
+
+      for (const rel of relations) {
+        // Find or create source and target memories
+        const sourceContent = `${rel.subject}`;
+        const targetContent = `${rel.object}`;
+
+        // Check if relation already exists
+        const { data: existing } = await db
+          .from('memory_relations')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('relation_type', rel.relation)
+          .eq('relation_label', `${rel.subject} ${rel.relation} ${rel.object}`)
+          .limit(1);
+
+        if (existing?.length) continue; // Already exists
+
+        // Find matching memories for subject and object
+        const subjectEmbedding = await this.generateEmbedding(sourceContent);
+        const { data: subjectMatches } = await db.rpc('match_memories', {
+          query_embedding: subjectEmbedding,
+          match_threshold: 0.7,
+          match_count: 1,
+          p_user_id: userId,
+        });
+
+        const objectEmbedding = await this.generateEmbedding(targetContent);
+        const { data: objectMatches } = await db.rpc('match_memories', {
+          query_embedding: objectEmbedding,
+          match_threshold: 0.7,
+          match_count: 1,
+          p_user_id: userId,
+        });
+
+        // Insert relation
+        await db.from('memory_relations').insert({
+          user_id: userId,
+          source_memory_id: subjectMatches?.[0]?.id || null,
+          target_memory_id: objectMatches?.[0]?.id || null,
+          relation_type: rel.relation,
+          relation_label: `${rel.subject} ${rel.relation} ${rel.object}`,
+        });
+
+        this.logger.info({ 
+          msg: '[MEMORY] Relation inserted',
+          relation: `${rel.subject} → ${rel.relation} → ${rel.object}`,
+        });
+      }
+    } catch (err) {
+      this.logger.error({ msg: '[MEMORY] extractRelations error', error: String(err) });
     }
   }
 

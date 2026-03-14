@@ -98,6 +98,66 @@ export class MemoryRetriever {
   }
 
   /**
+   * Retrieve time-sensitive memories (events, reminders) for proactive recall.
+   * These are injected even without a matching query.
+   */
+  async retrieveProactive(userId: string): Promise<RetrievedMemory[]> {
+    try {
+      const db = getSupabase();
+      
+      // Get recent event/goal/routine memories that might be time-relevant
+      const { data, error } = await db
+        .from('memories')
+        .select('id, category, content, relevance_score, created_at, expires_at')
+        .eq('user_id', userId)
+        .in('category', ['event', 'goal', 'routine', 'health'])
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error || !data?.length) return [];
+
+      // Filter out expired
+      const now = new Date();
+      const valid = data.filter((m: any) => !m.expires_at || new Date(m.expires_at) > now);
+
+      // Only keep recent ones (last 7 days) for proactive injection
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
+      const recent = valid.filter((m: any) => new Date(m.created_at) > sevenDaysAgo);
+
+      return recent.map((m: any) => ({
+        id: m.id,
+        category: m.category,
+        content: m.content,
+        score: m.relevance_score || 0.5,
+        created_at: m.created_at,
+      }));
+    } catch (error) {
+      this.logger.error({ msg: 'Proactive memory retrieval error', error });
+      return [];
+    }
+  }
+
+  /**
+   * Retrieve relationship graph for a user.
+   */
+  async retrieveRelations(userId: string, limit = 20): Promise<string[]> {
+    try {
+      const db = getSupabase();
+      const { data, error } = await db
+        .from('memory_relations')
+        .select('relation_label')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error || !data?.length) return [];
+      return data.map((r: { relation_label: string }) => r.relation_label);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Format memories for injection into Claude system prompt.
    */
   formatForPrompt(memories: RetrievedMemory[]): string {
