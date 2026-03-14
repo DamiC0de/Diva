@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "userInterfaceStyle": "automatic",
-      "bundleIdentifier": "com.diva.app",
+      "bundleIdentifier": "fr.papote.diva",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Diva a besoin du micro pour écouter ta voix et détecter le mot-clé \"Diva\".",
         "NSSpeechRecognitionUsageDescription": "Diva utilise la reconnaissance vocale pour détecter quand tu dis \"Diva\" et comprendre tes demandes.",
@@ -32,7 +32,8 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "userInterfaceStyle": "automatic"
+      "userInterfaceStyle": "automatic",
+      "package": "fr.papote.diva"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -42,7 +43,8 @@
       "expo-font",
       "expo-secure-store",
       "./modules/notification-reader/app.plugin",
-      "./modules/diva-ambient/app.plugin"
+      "./modules/diva-ambient/app.plugin",
+      "./plugins/withDivaWidget"
     ]
   }
 }
