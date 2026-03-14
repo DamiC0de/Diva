@@ -77,22 +77,32 @@ export default function OrbScreen() {
   });
 
   // Widget deep link: auto-start listening when launched via diva:///?widget=true
-  const widgetHandled = useRef(false);
+  const widgetAutoStarted = useRef(false);
   useEffect(() => {
-    if (!token || widgetHandled.current) return;
+    if (!token) return;
 
     const handleUrl = (url: string | null) => {
-      if (url && url.includes('widget=true') && orbState === 'idle' && !widgetHandled.current) {
-        widgetHandled.current = true;
-        // Small delay to let WS connect
-        setTimeout(() => toggleSession(), 500);
-      }
+      if (!url || !url.includes('widget=true')) return;
+      // For cold start, only trigger once
+      // For warm start (addEventListener), always trigger
+      const tryToggle = (attempt: number) => {
+        if (attempt > 8) return;
+        if (orbState === 'idle') {
+          toggleSession();
+        } else {
+          setTimeout(() => tryToggle(attempt + 1), 600);
+        }
+      };
+      setTimeout(() => tryToggle(1), 1000);
     };
 
-    // Check if app was launched via URL (cold start)
-    Linking.getInitialURL().then(handleUrl);
+    // Cold start — only once
+    if (!widgetAutoStarted.current) {
+      widgetAutoStarted.current = true;
+      Linking.getInitialURL().then(handleUrl);
+    }
 
-    // Listen for URL while app is open (warm start)
+    // Warm start — always listen
     const sub = Linking.addEventListener('url', (event) => handleUrl(event.url));
     return () => sub.remove();
   }, [token, orbState, toggleSession]);
