@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, ActivityIndicator, Linking } from 'react-native';
 import { Slot, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -27,10 +27,22 @@ SplashScreen.preventAutoHideAsync();
 // Required for OAuth redirects to work in Expo Go
 WebBrowser.maybeCompleteAuthSession();
 
+/** Returns true if a URL contains the widget=true trigger */
+function isWidgetLaunch(url: string | null): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.searchParams.get('widget') === 'true';
+  } catch {
+    return url.includes('widget=true');
+  }
+}
+
 export default function RootLayout() {
   const theme = useTheme();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const pendingWidgetRef = useRef(false);
 
   // Load Inter font family
   const [fontsLoaded] = useFonts({
