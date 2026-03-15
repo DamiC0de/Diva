@@ -70,7 +70,11 @@ export function useDivaAmbient({
       DivaAmbient.stopListening();
     } else if (!paused && wasListeningBeforePause.current) {
       wasListeningBeforePause.current = false;
-      DivaAmbient.startListening().catch(() => {});
+      // Delay resume to let the audio session settle after TTS playback
+      const timer = setTimeout(() => {
+        DivaAmbient.startListening().catch(() => {});
+      }, 1500);
+      return () => clearTimeout(timer);
     }
   }, [paused, isListening]);
 

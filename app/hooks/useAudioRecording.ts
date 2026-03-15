@@ -171,11 +171,52 @@ export function useAudioRecording(options: AudioRecordingOptions = {}): AudioRec
       });
     } catch (err) {
       console.error('[AudioRecording] Failed to start recording:', err);
-      setError({
-        title: 'Erreur micro',
-        message: 'Impossible de démarrer l\'enregistrement.',
-        action: 'Réessayer',
-      });
+      // Retry once after releasing audio session (common after TTS playback)
+      try {
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+        await new Promise(r => setTimeout(r, 500));
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        await new Promise(r => setTimeout(r, 100));
+        const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+        recordingRef.current = recording;
+        recordingStartRef.current = Date.now();
+        silenceStartRef.current = null;
+        stoppingRef.current = false;
+        hasAudibleAudioRef.current = false;
+        setIsRecording(true);
+        console.log('[AudioRecording] Retry succeeded');
+        // Re-attach the status update handler
+        recording.setProgressUpdateInterval(100);
+        recording.setOnRecordingStatusUpdate((recStatus) => {
+          if (!recStatus.isRecording || recStatus.metering == null) return;
+          const db = recStatus.metering;
+          const normalized = Math.max(0, Math.min(1, (db + 50) / 50));
+          setAudioLevel(normalized);
+          onAudioLevelChangeRef.current?.(normalized);
+          if (db > MIN_AUDIBLE_LEVEL) hasAudibleAudioRef.current = true;
+          const now = Date.now();
+          const elapsed = now - recordingStartRef.current;
+          if (elapsed > MIN_RECORDING_MS) {
+            if (db < SILENCE_THRESHOLD) {
+              if (!silenceStartRef.current) silenceStartRef.current = now;
+              else {
+                const silenceRequired = elapsed > 10000 ? LONG_RECORDING_SILENCE_MS : SILENCE_DURATION_MS;
+                if (now - silenceStartRef.current >= silenceRequired && !stoppingRef.current) {
+                  stoppingRef.current = true;
+                  onSilenceDetectedRef.current?.();
+                }
+              }
+            } else { silenceStartRef.current = null; }
+          }
+        });
+      } catch (retryErr) {
+        console.error('[AudioRecording] Retry also failed:', retryErr);
+        setError({
+          title: 'Erreur micro',
+          message: 'Impossible de démarrer l\'enregistrement. Essaie de fermer et rouvrir l\'app.',
+          action: 'Réessayer',
+        });
+      }
     } finally {
       isPreparingRecordingRef.current = false;
     }
