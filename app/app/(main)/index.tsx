@@ -7,7 +7,7 @@ import { View, StyleSheet, Text, Pressable, Linking } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Settings, History, Wifi, WifiOff, MessageCircle } from 'lucide-react-native';
+import { Settings, History, Wifi, WifiOff, MessageCircle, StopCircle } from 'lucide-react-native';
 import { OrbView } from '../../components/Orb/OrbView';
 import { TranscriptOverlay } from '../../components/TranscriptOverlay';
 import { ErrorOverlay } from '../../components/ErrorOverlay';
@@ -188,9 +188,20 @@ export default function OrbScreen() {
           />
         </View>
 
-        {/* State hint */}
+        {/* State hint + Stop button */}
         <View style={styles.hintContainer}>
-          {STATE_HINTS[orbState] ? (
+          {orbState !== 'idle' ? (
+            <Pressable
+              onPress={toggleSession}
+              style={({ pressed }) => [
+                styles.stopButton,
+                { backgroundColor: pressed ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.15)' },
+              ]}
+            >
+              <StopCircle size={18} color="#EF4444" strokeWidth={2} />
+              <Text style={styles.stopButtonText}>Arrêter</Text>
+            </Pressable>
+          ) : STATE_HINTS[orbState] ? (
             <Text style={[styles.hintText, { color: theme.textMuted }]}>
               {STATE_HINTS[orbState]}
             </Text>
@@ -290,6 +301,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '400',
     letterSpacing: 0.5,
+  },
+  stopButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.3)',
+  },
+  stopButtonText: {
+    color: '#EF4444',
+    fontSize: 16,
+    fontWeight: '600',
   },
 
   // Transcript
