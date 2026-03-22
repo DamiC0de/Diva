@@ -567,62 +567,67 @@ async function fetchPageContent(url: string, maxChars = 3000): Promise<string | 
 }
 
 async function executeWebSearch(query: string): Promise<string> {
-  const braveKey = process.env['BRAVE_SEARCH_API_KEY'];
-  
-  if (braveKey) {
+  // SearXNG instances to try (public, free, no API key needed)
+  const SEARXNG_INSTANCES = [
+    process.env['SEARXNG_URL'],              // Custom instance if configured
+    'https://search.sapti.me',
+    'https://searx.be',
+    'https://search.bus-hit.me',
+    'https://searx.tiekoetter.com',
+  ].filter(Boolean) as string[];
+
+  for (const instance of SEARXNG_INSTANCES) {
     try {
-      const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5&search_lang=fr`;
+      const url = `${instance}/search?q=${encodeURIComponent(query)}&format=json&language=fr&categories=general&engines=google,duckduckgo,bing&pageno=1`;
       const res = await fetch(url, {
         headers: {
           'Accept': 'application/json',
-          'Accept-Encoding': 'gzip',
-          'X-Subscription-Token': braveKey,
+          'User-Agent': 'Diva/1.0',
         },
+        signal: AbortSignal.timeout(8000),
       });
 
-      if (!res.ok) throw new Error(`Brave API ${res.status}`);
-      const data = await res.json() as { web?: { results?: { title: string; url: string; description: string; published?: string }[] } };
-      
-      const results = data.web?.results || [];
-      if (results.length === 0) return `Aucun résultat trouvé pour "${query}"`;
-      
-      // Format search results
-      const formatted = results.map((r, i) => {
-        let line = `${i + 1}. ${r.title}\n   ${r.description}`;
-        if (r.published) line += `\n   Date: ${r.published}`;
+      if (!res.ok) continue;
+      const data = await res.json() as { results?: { title: string; url: string; content: string; publishedDate?: string }[] };
+
+      const results = data.results || [];
+      if (results.length === 0) continue;
+
+      const top = results.slice(0, 5);
+      const formatted = top.map((r, i) => {
+        let line = `${i + 1}. ${r.title}\n   ${r.content}`;
+        if (r.publishedDate) line += `\n   Date: ${r.publishedDate}`;
         return line;
       });
-      
+
       let output = `Résultats de recherche pour "${query}":\n\n` + formatted.join('\n\n');
-      
-      // Fetch content from top result only (1000 chars max) — faster
-      const pageFetches = results.slice(0, 1).map(r => fetchPageContent(r.url, 1000));
-      const pageContents = await Promise.all(pageFetches);
-      
-      for (let i = 0; i < pageContents.length; i++) {
-        if (pageContents[i]) {
-          output += `\n\n--- Contenu détaillé de "${results[i].title}" ---\n${pageContents[i]}`;
+
+      // Fetch content from top result (1000 chars max)
+      try {
+        const pageContent = await fetchPageContent(top[0].url, 1000);
+        if (pageContent) {
+          output += `\n\n--- Contenu détaillé de "${top[0].title}" ---\n${pageContent}`;
         }
-      }
-      
+      } catch { /* ignore page fetch errors */ }
+
       return output;
-    } catch (e) {
-      console.error('Brave Search failed, falling back to DDG:', e);
+    } catch {
+      continue; // Try next instance
     }
   }
 
-  // Fallback: DuckDuckGo HTML scraping
+  // Final fallback: DuckDuckGo HTML scraping
   try {
     const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Diva/1.0)' },
     });
     const html = await res.text();
-    
+
     const results: string[] = [];
     const snippetRegex = /<a class="result__snippet"[^>]*>(.*?)<\/a>/gs;
     const titleRegex = /class="result__a"[^>]*>(.*?)<\/a>/gs;
-    
+
     let match;
     const titles: string[] = [];
     while ((match = titleRegex.exec(html)) !== null && titles.length < 5) {
@@ -632,13 +637,13 @@ async function executeWebSearch(query: string): Promise<string> {
     while ((match = snippetRegex.exec(html)) !== null && snippets.length < 5) {
       snippets.push(match[1].replace(/<[^>]*>/g, '').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim());
     }
-    
+
     for (let i = 0; i < Math.max(titles.length, snippets.length); i++) {
       const t = titles[i] || '';
       const s = snippets[i] || '';
       if (t || s) results.push(t ? `${t}: ${s}` : s);
     }
-    
+
     if (results.length === 0) return `Aucun résultat trouvé pour "${query}"`;
     return `Résultats pour "${query}":\n` + results.join('\n\n');
   } catch (e) {
@@ -711,14 +716,42 @@ async function executeListMemories(userId: string): Promise<string> {
 
 async function executeWeather(city: string): Promise<string> {
   try {
-    const res = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1&lang=fr`);
+    // 1. Geocode city via Open-Meteo
+    const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=fr`);
+    if (!geoRes.ok) return `Impossible de géolocaliser ${city}`;
+    const geoData = await geoRes.json() as { results?: { name: string; latitude: number; longitude: number; country: string }[] };
+    if (!geoData.results?.length) return `Ville introuvable : "${city}"`;
+    const geo = geoData.results[0]!;
+
+    // 2. Get weather from Open-Meteo
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.latitude}&longitude=${geo.longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&forecast_days=3&timezone=auto`;
+    const res = await fetch(url);
     if (!res.ok) return `Impossible d'obtenir la météo pour ${city}`;
-    const data = await res.json() as Record<string, unknown>;
-    const current = data.current_condition as Record<string, unknown>[];
-    if (!current?.[0]) return `Pas de données météo pour ${city}`;
-    const c = current[0];
-    const desc = (c.lang_fr as { value: string }[])?.[0]?.value ?? (c.weatherDesc as { value: string }[])?.[0]?.value ?? '';
-    return `Météo à ${city}: ${desc}, ${c.temp_C}°C (ressenti ${c.FeelsLikeC}°C), humidité ${c.humidity}%, vent ${c.windspeedKmph} km/h`;
+    const data = await res.json() as {
+      current: { temperature_2m: number; apparent_temperature: number; relative_humidity_2m: number; wind_speed_10m: number; weather_code: number; is_day: number };
+      daily: { time: string[]; temperature_2m_max: number[]; temperature_2m_min: number[]; weather_code: number[]; precipitation_probability_max: number[] };
+    };
+
+    const WMO: Record<number, string> = {
+      0: 'Ciel dégagé', 1: 'Principalement dégagé', 2: 'Partiellement nuageux', 3: 'Couvert',
+      45: 'Brouillard', 48: 'Brouillard givrant',
+      51: 'Bruine légère', 53: 'Bruine modérée', 55: 'Bruine dense',
+      61: 'Pluie légère', 63: 'Pluie modérée', 65: 'Pluie forte',
+      71: 'Neige légère', 73: 'Neige modérée', 75: 'Neige forte',
+      80: 'Averses légères', 81: 'Averses modérées', 82: 'Averses violentes',
+      95: 'Orage', 96: 'Orage avec grêle', 99: 'Orage avec grêle forte',
+    };
+
+    const desc = WMO[data.current.weather_code] ?? 'Inconnu';
+    let result = `Météo à ${geo.name} (${geo.country}): ${desc}, ${data.current.temperature_2m}°C (ressenti ${data.current.apparent_temperature}°C), humidité ${data.current.relative_humidity_2m}%, vent ${data.current.wind_speed_10m} km/h`;
+
+    // Add 3-day forecast
+    const forecasts = data.daily.time.map((date: string, i: number) =>
+      `${date}: ${WMO[data.daily.weather_code[i]] ?? '?'}, ${data.daily.temperature_2m_min[i]}–${data.daily.temperature_2m_max[i]}°C, pluie ${data.daily.precipitation_probability_max[i]}%`
+    );
+    result += `\nPrévisions: ${forecasts.join(' | ')}`;
+
+    return result;
   } catch {
     return `Erreur lors de la récupération de la météo pour ${city}`;
   }
