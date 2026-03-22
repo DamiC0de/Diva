@@ -50,7 +50,7 @@ export default function OrbScreen() {
     transcriptRole,
     audioLevel,
     toggleSession,
-    // cancel available for future use
+    cancel,
     isConnected: isWsConnected,
     error,
     clearError,
@@ -197,11 +197,11 @@ export default function OrbScreen() {
           ) : null}
         </View>
 
-        {/* Stop button (only when session active) */}
+        {/* Stop button (only when session active) — calls cancel to fully stop */}
         {orbState !== 'idle' && (
           <View style={styles.stopContainer}>
             <Pressable
-              onPress={toggleSession}
+              onPress={cancel}
               style={({ pressed }) => [
                 styles.stopButton,
                 { backgroundColor: pressed ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.15)' },
