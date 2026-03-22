@@ -75,6 +75,8 @@ struct MascotView: View {
             // Mascot image (embedded base64 — no xcassets needed in widget target)
             makeDivaMascotImage()
                 .resizable()
+                .interpolation(.high)
+                .antialiased(true)
                 .scaledToFit()
                 .frame(width: size, height: size)
                 .shadow(color: brandCyan.opacity(0.6), radius: size * 0.15, x: 0, y: 4)
