@@ -9,5 +9,10 @@ iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAYAAAB/HSuDAAEAAElEQVR4nOz96ZMkSbbdBx4186xeXy9v
           let uiImage = UIImage(data: data) else {
         return Image(systemName: "questionmark.circle")
     }
-    return Image(uiImage: uiImage)
+    // Render at @3x scale to prevent blurry display in widgets (especially iOS 26+)
+    guard let cgImage = uiImage.cgImage else {
+        return Image(systemName: "questionmark.circle")
+    }
+    let scaledImage = UIImage(cgImage: cgImage, scale: 3.0, orientation: .up)
+    return Image(uiImage: scaledImage)
 }
