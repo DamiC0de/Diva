@@ -188,9 +188,18 @@ export default function OrbScreen() {
           />
         </View>
 
-        {/* State hint + Stop button */}
+        {/* State hint */}
         <View style={styles.hintContainer}>
-          {orbState !== 'idle' ? (
+          {STATE_HINTS[orbState] ? (
+            <Text style={[styles.hintText, { color: theme.textMuted }]}>
+              {STATE_HINTS[orbState]}
+            </Text>
+          ) : null}
+        </View>
+
+        {/* Stop button (only when session active) */}
+        {orbState !== 'idle' && (
+          <View style={styles.stopContainer}>
             <Pressable
               onPress={toggleSession}
               style={({ pressed }) => [
@@ -201,21 +210,19 @@ export default function OrbScreen() {
               <StopCircle size={18} color="#EF4444" strokeWidth={2} />
               <Text style={styles.stopButtonText}>Arrêter</Text>
             </Pressable>
-          ) : STATE_HINTS[orbState] ? (
-            <Text style={[styles.hintText, { color: theme.textMuted }]}>
-              {STATE_HINTS[orbState]}
-            </Text>
-          ) : null}
-        </View>
+          </View>
+        )}
 
-        {/* Transcript */}
-        <View style={styles.transcriptContainer}>
-          <TranscriptOverlay 
-            text={transcript} 
-            role={transcriptRole}
-            isStreaming={orbState === 'speaking' && transcriptRole === 'assistant'}
-          />
-        </View>
+        {/* Transcript (hidden when no text) */}
+        {transcript ? (
+          <View style={styles.transcriptContainer}>
+            <TranscriptOverlay 
+              text={transcript} 
+              role={transcriptRole}
+              isStreaming={orbState === 'speaking' && transcriptRole === 'assistant'}
+            />
+          </View>
+        ) : null}
 
         {/* Error overlay */}
         <ErrorOverlay
@@ -301,6 +308,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '400',
     letterSpacing: 0.5,
+  },
+  stopContainer: {
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 8,
   },
   stopButton: {
     flexDirection: 'row',
