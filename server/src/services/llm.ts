@@ -170,7 +170,14 @@ export class LLMService {
     const humor = userSettings?.personality?.humor ?? true;
     const userName = userSettings?.name ?? 'l\'utilisateur';
 
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Europe/Paris' });
+    const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+
     const corePrompt = `Tu es Diva, un assistant vocal intelligent et personnel. Tu parles français.
+
+## Date et heure actuelles
+Nous sommes le ${dateStr}, il est ${timeStr} (heure de Paris).
 
 ## Personnalité
 ${TONE_INSTRUCTIONS[tone] ?? TONE_INSTRUCTIONS['friendly']}
