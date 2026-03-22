@@ -289,7 +289,7 @@ Tu peux :
         allTools.push({
           type: 'web_search_20250305',
           name: 'web_search',
-          max_uses: 3,
+          max_uses: 5,
         });
 
         const response = await this.client!.messages.create({
