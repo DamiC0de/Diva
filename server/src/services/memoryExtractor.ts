@@ -30,7 +30,7 @@ interface Message {
   content: string;
 }
 
-const EXTRACTION_PROMPT = `Analyse cette conversation et extrais TOUS les faits importants à mémoriser sur l'utilisateur. Sois exhaustif — chaque détail personnel compte.
+const EXTRACTION_PROMPT = `Analyse cette conversation et extrais UNIQUEMENT les faits vraiment importants à mémoriser sur l'utilisateur — des informations durables qui aideront Diva à mieux le connaître et le servir sur le long terme.
 
 Pour chaque fait, donne :
 - category: une parmi preference | fact | person | event | health | routine | location | relationship | opinion | goal
@@ -39,21 +39,25 @@ Pour chaque fait, donne :
 - expiresInDays: nombre de jours avant expiration (null = permanent). Ex: "a mal à la tête" → 2, "est diabétique" → null, "a un rdv demain" → 3, "aime le jazz" → null
 
 Catégories :
-- preference : goûts, préférences ("aime le jazz", "préfère le thé vert")
-- fact : faits personnels ("travaille chez Airbus", "a 2 enfants")
-- person : personnes mentionnées ("Sophie est sa copine", "Marc est son collègue")
-- event : événements passés ou futurs ("va se marier en juin", "a eu un entretien lundi")
-- health : santé physique/mentale ("est diabétique", "prend du magnésium", "dort mal")
-- routine : habitudes régulières ("court le mardi matin", "commande des sushis le vendredi")
-- location : lieux importants ("habite à Lyon", "bureau à la Défense")
+- preference : goûts durables ("aime le jazz", "préfère le thé vert") — PAS les curiosités ponctuelles
+- fact : faits personnels structurants ("travaille chez Airbus", "a 2 enfants", "est papa")
+- person : personnes importantes dans sa vie ("Sophie est sa copine", "Marc est son collègue")
+- event : événements significatifs passés ou futurs ("va se marier en juin", "a eu un entretien lundi")
+- health : santé physique/mentale durable ("est diabétique", "prend du magnésium", "dort mal chroniquement")
+- routine : habitudes régulières établies ("court le mardi matin", "commande des sushis le vendredi")
+- location : lieux importants de sa vie ("habite à Lyon", "bureau à la Défense")
 - relationship : liens entre personnes ("Sophie et Marc sont en couple", "son frère vit au Canada")
-- opinion : avis, convictions ("pense que l'IA va tout changer", "n'aime pas la politique")
-- goal : objectifs, projets ("veut apprendre le piano", "prépare un marathon")
+- opinion : convictions durables ("pense que l'IA va tout changer", "n'aime pas la politique")
+- goal : objectifs de vie, projets personnels importants ("veut apprendre le piano", "prépare un marathon")
 
-Ne retiens QUE les informations personnelles durables (pas les questions ponctuelles comme "quelle heure est-il").
-Extrais le MAXIMUM de faits pertinents — mieux vaut trop que pas assez.
+Règles strictes :
+- relevanceScore MINIMUM 0.7 — en dessous, ne pas inclure
+- NE PAS mémoriser : questions factuelles ponctuelles, recherches d'information passagères (météo, prix, horaires, recettes), sujets abordés par curiosité sans lien personnel
+- NE PAS mémoriser : "s'est renseigné sur X" si X n'est pas directement lié à sa vie personnelle
+- Seule exception : si la recherche révèle quelque chose de structurant (ex: "cherche un vélo" → peut révéler une pratique sportive)
+- Quand le doute est présent : ne pas mémoriser
 
-Réponds UNIQUEMENT en JSON array. Si rien à retenir, réponds [].`;
+Réponds UNIQUEMENT en JSON array. Si rien ne mérite d'être retenu, réponds [].`;
 
 export class MemoryExtractor {
   private logger: FastifyBaseLogger;
@@ -112,9 +116,26 @@ export class MemoryExtractor {
         return [];
       }
 
+      // Filter out low-relevance facts (hard threshold: 0.7)
+      const MIN_RELEVANCE = 0.7;
+      const filteredFacts = facts.filter(f => f.relevanceScore >= MIN_RELEVANCE);
+      if (filteredFacts.length < facts.length) {
+        this.logger.info({
+          msg: '[MEMORY-DEBUG] Low-relevance facts filtered out',
+          before: facts.length,
+          after: filteredFacts.length,
+          dropped: facts.filter(f => f.relevanceScore < MIN_RELEVANCE).map(f => ({ content: f.content, score: f.relevanceScore })),
+        });
+      }
+
+      if (filteredFacts.length === 0) {
+        this.logger.warn({ msg: '[MEMORY-DEBUG] All facts below relevance threshold, skipping storage' });
+        return [];
+      }
+
       // Store each fact in Supabase
       const db = getSupabase();
-      for (const fact of facts) {
+      for (const fact of filteredFacts) {
         this.logger.info({ msg: '[MEMORY-DEBUG] Generating embedding', content: fact.content });
         const embedding = await this.generateEmbedding(fact.content);
         this.logger.info({ msg: '[MEMORY-DEBUG] Embedding generated', dims: embedding.length, isZero: embedding.every(v => v === 0) });
@@ -184,7 +205,7 @@ export class MemoryExtractor {
         this.logger.error({ msg: '[MEMORY] Relation extraction failed', error: String(err) })
       );
 
-      return facts;
+      return filteredFacts;
     } catch (error) {
       this.logger.error({ msg: '[MEMORY-DEBUG] extract() CRASHED', error: String(error), stack: (error as Error)?.stack });
       return [];
