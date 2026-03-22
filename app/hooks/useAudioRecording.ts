@@ -106,8 +106,8 @@ export function useAudioRecording(options: AudioRecordingOptions = {}): AudioRec
         return;
       }
 
-      // Wait for iOS to release audio resources
-      await new Promise(r => setTimeout(r, 250));
+      // Wait for iOS to release audio resources (longer delay needed after TTS playback)
+      await new Promise(r => setTimeout(r, 500));
 
       // Switch to recording mode
       await Audio.setAudioModeAsync({

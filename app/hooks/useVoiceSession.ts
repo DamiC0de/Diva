@@ -375,10 +375,16 @@ export function useVoiceSession({
       return;
     }
 
+    // Guard: don't start recording while TTS is still playing
+    if (isPlayingRef.current || audioQueueRef.current.length > 0) {
+      console.log('[Audio] Skipping listen - TTS still playing, will retry on playback complete');
+      return;
+    }
+
     await baseStartRecording();
     setOrbState('listening');
     send({ type: 'start_listening' });
-  }, [baseStartRecording, send, wsRef, stoppingRef]);
+  }, [baseStartRecording, send, wsRef, stoppingRef, isPlayingRef, audioQueueRef]);
 
   const doStopAndSend = useCallback(async () => {
     const result = await stopRecording();
